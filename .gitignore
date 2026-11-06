@@ -1,0 +1,21 @@
+# секреты, НИКОГДА не коммитить
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# база и логи
+*.db
+*.sqlite3
+*.log
+
+# ide и система
+.idea/
+.vscode/
+.DS_Store
+node_modules/
