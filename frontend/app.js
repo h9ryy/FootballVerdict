@@ -50,6 +50,60 @@ function safe(fn) {
   };
 }
 
+/* ---------- оформление матчей ---------- */
+
+// короткие названия клубов (если клуба тут нет, лишнее (FC, CF, годы) убирается автоматически)
+const SHORT = {
+  'Brighton & Hove Albion FC': 'Brighton', 'Manchester United FC': 'Man United',
+  'Manchester City FC': 'Man City', 'Tottenham Hotspur FC': 'Tottenham',
+  'Newcastle United FC': 'Newcastle', 'Wolverhampton Wanderers FC': 'Wolves',
+  'West Ham United FC': 'West Ham', 'Nottingham Forest FC': 'Nottingham',
+  'Leeds United FC': 'Leeds', 'LeedsUnited FC': 'Leeds', 'AFC Bournemouth': 'Bournemouth',
+  'Club Atlético de Madrid': 'Atlético', 'Real Betis Balompié': 'Betis',
+  'Real Sociedad de Fútbol': 'Real Sociedad', 'Rayo Vallecano de Madrid': 'Rayo',
+  'RCD Espanyol de Barcelona': 'Espanyol', 'RC Celta de Vigo': 'Celta',
+  'Deportivo Alavés': 'Alavés', 'RCD Mallorca': 'Mallorca', 'CA Osasuna': 'Osasuna',
+  'FC Internazionale Milano': 'Inter', 'AC Milan': 'Milan', 'SSC Napoli': 'Napoli',
+  'ACF Fiorentina': 'Fiorentina', 'Bologna FC 1909': 'Bologna', 'Parma Calcio 1913': 'Parma',
+  'US Sassuolo Calcio': 'Sassuolo', 'Hellas Verona FC': 'Verona',
+  'FC Bayern München': 'Bayern', 'Bayer 04 Leverkusen': 'Leverkusen',
+  'Borussia Mönchengladbach': "M'gladbach", 'Borussia Dortmund': 'Dortmund',
+  'Eintracht Frankfurt': 'Frankfurt', '1. FSV Mainz 05': 'Mainz',
+  'TSG 1899 Hoffenheim': 'Hoffenheim', '1. FC Union Berlin': 'Union Berlin',
+  'SV Werder Bremen': 'Werder', '1. FC Köln': 'Köln', 'FC St. Pauli 1910': 'St. Pauli',
+  '1. FC Heidenheim 1846': 'Heidenheim', 'Paris Saint-Germain FC': 'PSG',
+  'Olympique de Marseille': 'Marseille', 'Olympique Lyonnais': 'Lyon',
+  'AS Monaco FC': 'Monaco', 'Stade Rennais FC 1901': 'Rennes',
+  'Sporting Clube de Portugal': 'Sporting', 'SL Benfica': 'Benfica',
+  'Club Brugge KV': 'Brugge', 'AFC Ajax': 'Ajax', 'Galatasaray SK': 'Galatasaray',
+};
+
+function shortName(n) {
+  if (SHORT[n]) return SHORT[n];
+  const s = n
+    .replace(/^\d+\.\s*/, '')
+    .replace(/\b(FC|AFC|CF|BC|SC|SK|KV|FK|UD|AC|AS|SS|US|RC|SV|VfB|VfL|SSC|ACF)\b\.?/g, '')
+    .replace(/\b(1[89]\d\d|20\d\d|0\d)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s || n;
+}
+
+function dayLabel(d) {
+  const t = new Date();
+  const tomorrow = new Date(); tomorrow.setDate(t.getDate() + 1);
+  const yesterday = new Date(); yesterday.setDate(t.getDate() - 1);
+  if (d.toDateString() === t.toDateString()) return 'Сегодня';
+  if (d.toDateString() === tomorrow.toDateString()) return 'Завтра';
+  if (d.toDateString() === yesterday.toDateString()) return 'Вчера';
+  const s = d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function timeStr(d) {
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
 /* ---------- первый вход: ник и 18+ ---------- */
 
 function onboarding() {
@@ -99,49 +153,78 @@ const league = safe(async (code, name, matchday) => {
   setTab('home');
   const d = await api(`/leagues/${code}/matches` + (matchday ? `?matchday=${matchday}` : ''));
   const md = d.matchday || matchday || 1;
+
+  const items = [];
+  let lastDay = '';
+  d.matches.forEach(m => {
+    const label = dayLabel(new Date(m.kickoff));
+    if (label !== lastDay) { items.push(h('div', { class: 'day' }, label)); lastDay = label; }
+    items.push(matchCard(m));
+  });
+
   show(
     h('button', { class: 'back', onclick: home }, '← Лиги'),
-    h('div', { class: 'row' },
+    h('div', { class: 'toprow' },
       h('button', { class: 'arrow', onclick: () => md > 1 && league(code, name, md - 1) }, '‹'),
-      h('h1', {}, `${name} · тур ${md}`),
+      h('div', { class: 'ttl' }, h('h1', {}, name), h('div', { class: 'dim' }, `Тур ${md}`)),
       h('button', { class: 'arrow', onclick: () => league(code, name, md + 1) }, '›')),
-    d.matches.length
-      ? d.matches.map(matchCard)
-      : h('p', { class: 'dim center' }, 'В этом туре нет матчей.')
+    items.length ? items : h('p', { class: 'dim center' }, 'В этом туре нет матчей.')
   );
 });
 
 function matchCard(m) {
-  const when = new Date(m.kickoff).toLocaleString('ru-RU',
-    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const kick = new Date(m.kickoff);
   const labels = { H: 'П1', D: 'Ничья', A: 'П2' };
+  const chip = h('span', { class: 'chip' });
 
-  const btns = ['H', 'D', 'A'].map(k => {
-    const b = h('button', { class: 'pick', disabled: m.locked }, labels[k]);
-    b.paint = () => {
-      b.className = 'pick' + (m.pick === k ? ' active' : '');
-      if (m.result && m.pick === k) b.classList.add(k === m.result ? 'right' : 'wrong');
-    };
-    b.paint();
+  const segs = ['H', 'D', 'A'].map(k => {
+    const b = h('button', { class: 'segb', disabled: m.locked }, labels[k]);
+    b.dataset.k = k;
     b.addEventListener('click', async () => {
       try {
         await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: k }) });
         m.pick = k;
-        btns.forEach(x => x.paint());
+        paint();
       } catch (e) { alert(e.message); }
     });
     return b;
   });
 
-  let status = when;
-  if (m.result) status = 'Завершён · исход: ' + labels[m.result];
-  else if (m.locked) status = 'Приём прогнозов закрыт';
+  function paint() {
+    segs.forEach(b => {
+      const k = b.dataset.k;
+      let cls = 'segb';
+      if (m.pick === k) cls += m.result ? (k === m.result ? ' right' : ' wrong') : ' on';
+      else if (m.result && k === m.result) cls += ' res';
+      b.className = cls;
+    });
 
-  return h('div', { class: 'card' },
-    h('div', { class: 'teams' }, `${m.home} — ${m.away}`),
-    h('div', { class: 'dim' }, status),
-    h('div', { class: 'picks' }, btns)
-  );
+    let text = '';
+    let cls = '';
+    if (m.result) {
+      if (!m.pick) { text = 'Завершён'; }
+      else if (m.pick === m.result) { text = 'Угадал'; cls = 'ok'; }
+      else { text = 'Не угадал'; cls = 'bad'; }
+    } else if (m.locked) {
+      if (m.pick) { text = 'Ждём итог'; cls = 'live'; }
+      else { text = 'Приём закрыт'; }
+    } else {
+      if (m.pick) { text = 'Ждёт матча'; cls = 'wait'; }
+      else { text = 'Сделай прогноз'; }
+    }
+    chip.className = 'chip ' + cls;
+    chip.textContent = text;
+  }
+  paint();
+
+  return h('div', { class: 'card match' },
+    h('div', { class: 'mtop' },
+      h('div', { class: 'time' }, timeStr(kick)),
+      h('div', { class: 'teams2' },
+        h('div', {}, shortName(m.home)),
+        h('div', {}, shortName(m.away))),
+      chip),
+    h('div', { class: 'seg' }, segs));
 }
 
 /* ---------- рейтинг ---------- */
@@ -179,7 +262,7 @@ const profile = safe(async () => {
       h('b', {}, 'Последние прогнозы'),
       hist.length
         ? hist.map(p => h('div', { class: 'rank' },
-            h('span', {}, `${p.home} — ${p.away}`),
+            h('span', {}, `${shortName(p.home)} — ${shortName(p.away)}`),
             h('span', { class: 'dim' }, p.result ? (p.points ? `+${p.points}` : '0') : labels[p.pick])))
         : h('div', { class: 'dim' }, 'Ты ещё не делал прогнозов.')),
     h('p', { class: 'dim' }, 'Только прогнозы. Без денег и призов, очки виртуальные и не выводятся. 18+'),
