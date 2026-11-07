@@ -97,3 +97,58 @@ def test_outcome_uses_90_minutes():
     assert outcome(m) == "D"
     assert outcome({"score": {"fullTime": {"home": 2, "away": 0}}}) == "H"
     assert outcome({"score": {"fullTime": {"home": None, "away": None}}}) is None
+    
+def crowd(db, result, picks):
+    """picks: выборы игроков, например ['A', 'H', 'H']. Возвращает матч и игроков."""
+    m = make_match(db, 1, result)
+    users = []
+    for i, pick in enumerate(picks, start=1):
+        u = make_user(db, tg=i)
+        bet(db, u, m, pick)
+        users.append(u)
+    return m, users
+
+
+def test_draw_bonus(db):
+    u = make_user(db)
+    m = make_match(db, 1, "D")
+    bet(db, u, m, "D")
+    settle_match(db, m)
+    assert u.points == 13
+
+
+def test_rare_bonus_top_tier(db):
+    m, users = crowd(db, "A", ["A"] + ["H"] * 9)   # за A выбрал 1 из 10 = 10%
+    settle_match(db, m)
+    assert users[0].points == 20
+    assert users[1].points == 0
+
+
+def test_rare_bonus_middle_tier(db):
+    m, users = crowd(db, "A", ["A"] * 2 + ["H"] * 8)   # 20%
+    settle_match(db, m)
+    assert users[0].points == 16
+
+
+def test_rare_bonus_low_tier_boundary(db):
+    m, users = crowd(db, "A", ["A"] * 3 + ["H"] * 7)   # ровно 30%: уже следующая ступень
+    settle_match(db, m)
+    assert users[0].points == 13
+
+
+def test_popular_pick_no_bonus(db):
+    m, users = crowd(db, "H", ["H"] * 6 + ["A"] * 4)   # 60%
+    settle_match(db, m)
+    assert users[0].points == 10
+
+
+def test_rare_bonus_needs_enough_votes(db):
+    m, users = crowd(db, "A", ["A"] + ["H"] * 4)   # всего 5 прогнозов
+    settle_match(db, m)
+    assert users[0].points == 10
+
+
+def test_rare_draw_stacks(db):
+    m, users = crowd(db, "D", ["D"] + ["H"] * 9)   # 10 + 3 за ничью + 10 за редкость
+    settle_match(db, m)
+    assert users[0].points == 23
