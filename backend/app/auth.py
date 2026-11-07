@@ -1,6 +1,6 @@
 import hashlib, hmac, json, time
 from urllib.parse import parse_qsl
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 from .config import BOT_TOKEN, DEV_MODE
 from .db import get_db
