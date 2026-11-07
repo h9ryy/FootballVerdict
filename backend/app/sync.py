@@ -8,7 +8,7 @@ import httpx
 from .config import FOOTBALL_DATA_TOKEN, LEAGUES
 from .db import SessionLocal
 from .models import Match
-from .scoring import settle_match
+from .scoring import settle_match, settle_series
 
 log = logging.getLogger("sync")
 
@@ -19,13 +19,21 @@ IDLE_EVERY = 900        # когда матчей нет: раз в 15 мину�
 FINAL = ("FINISHED", "AWARDED")
 
 
-def outcome(m: dict) -> str | None:
-    """Исход за основное время (90 мин), без пенальти и допвремени."""
+def score_90(m: dict) -> tuple[int, int] | None:
+    """Счёт за основное время (90 мин), без пенальти и допвремени."""
     score = m.get("score") or {}
     s = score.get("regularTime") or score.get("fullTime") or {}
     h, a = s.get("home"), s.get("away")
     if h is None or a is None:
         return None
+    return int(h), int(a)
+
+
+def outcome(m: dict) -> str | None:
+    sc = score_90(m)
+    if sc is None:
+        return None
+    h, a = sc
     return "H" if h > a else "A" if h < a else "D"
 
 
@@ -45,6 +53,9 @@ def apply_match(db, m: dict, code: str):
     row.kickoff_at = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00"))
     row.status = m["status"]
     if m["status"] in FINAL and not row.settled:
+        sc = score_90(m)
+        if sc:
+            row.home_goals, row.away_goals = sc
         row.result = outcome(m)
     elif m["status"] == "CANCELLED":
         row.settled = True   # отменён: очков нет, прогнозы не засчитываются
@@ -60,6 +71,7 @@ def settle_finished(db) -> int:
             .order_by(Match.kickoff_at).all())
     for row in rows:
         settle_match(db, row)
+    settle_series(db)
     return len(rows)
 
 

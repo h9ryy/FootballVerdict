@@ -12,6 +12,14 @@ const view = document.getElementById('view');
 let me = null;
 const CONTACT = '@hehevgsh5'; // ЗАМЕНИ на свой Telegram-ник или почту
 
+const PICK = { H: 'П1', D: 'Ничья', A: 'П2' };
+const SERIES_STATUS = {
+  open: ['В игре', 'wait'],
+  won: ['Выиграна', 'ok'],
+  lost: ['Не вышла', 'bad'],
+  void: ['Аннулирована', ''],
+};
+
 /* ---------- вспомогательное ---------- */
 
 // безопасная сборка элементов: текст вставляется через textContent, а не как HTML
@@ -133,13 +141,100 @@ function onboarding() {
   );
 }
 
+/* ---------- серия дня ---------- */
+
+function serMark(sm) {
+  const p = PICK[sm.pick] || '';
+  if (!sm.result) return p;
+  return sm.pick === sm.result ? `${p} ✓` : `${p} ✗`;
+}
+
+function seriesCard(ser) {
+  const open = ser.series.find(s => s.status === 'open');
+  const last = ser.series[0];
+  const lines = s => s.matches.map(sm => h('div', { class: 'line' },
+    h('span', {}, `${shortName(sm.home)} — ${shortName(sm.away)}`),
+    h('span', { class: 'dim' }, serMark(sm))));
+
+  if (open) {
+    return h('div', { class: 'card series' },
+      h('div', { class: 'head' }, h('b', {}, 'Серия дня'), h('span', { class: 'chip wait' }, 'В игре')),
+      lines(open),
+      h('div', { class: 'dim' }, `Угадаешь все: +${open.potential} очков`));
+  }
+  if (ser.can_create) {
+    return h('div', { class: 'card series' },
+      h('b', {}, 'Серия дня'),
+      h('p', { class: 'dim' },
+        `Выбери ${ser.min}–${ser.max} матчей ближайших двух суток. Угадаешь все: до +${ser.bonus[ser.max]} очков.`),
+      last ? h('p', { class: 'dim' },
+        `Прошлая серия: ${SERIES_STATUS[last.status][0]}${last.status === 'won' ? ` +${last.bonus}` : ''}`) : '',
+      h('button', { class: 'btn', onclick: () => seriesBuilder(ser) }, 'Собрать серию'));
+  }
+  if (!last) return '';
+  const [txt, cls] = SERIES_STATUS[last.status];
+  return h('div', { class: 'card series' },
+    h('div', { class: 'head' }, h('b', {}, 'Серия дня'),
+      h('span', { class: 'chip ' + cls }, txt + (last.status === 'won' ? ` +${last.bonus}` : ''))),
+    lines(last),
+    h('div', { class: 'dim' }, 'Новая серия завтра'));
+}
+
+function seriesBuilder(ser) {
+  setTab('home');
+  const chosen = new Set();
+  const info = h('div', { class: 'dim center gap' });
+  const btn = h('button', { class: 'btn', disabled: true, onclick: async () => {
+    if (!confirm('Собрать серию? Прогнозы на эти матчи после этого нельзя будет менять.')) return;
+    try {
+      await api('/series', { method: 'POST', body: JSON.stringify({ match_ids: [...chosen] }) });
+      home();
+    } catch (e) { alert(e.message); }
+  } }, 'Собрать серию');
+
+  const boxes = [];
+  const rows = ser.candidates.map(c => {
+    const cb = h('input', { type: 'checkbox' });
+    boxes.push([cb, c.id]);
+    cb.addEventListener('change', () => {
+      if (cb.checked) chosen.add(c.id); else chosen.delete(c.id);
+      refresh();
+    });
+    const k = new Date(c.kickoff);
+    return h('label', { class: 'cand' }, cb,
+      h('div', {},
+        h('div', { class: 'teams' }, `${shortName(c.home)} — ${shortName(c.away)}`),
+        h('div', { class: 'dim' }, `${dayLabel(k)}, ${timeStr(k)} · твой прогноз: ${PICK[c.pick]}`)));
+  });
+
+  function refresh() {
+    const n = chosen.size;
+    info.textContent = `Выбрано ${n} из ${ser.max}`;
+    btn.disabled = !(n >= ser.min && n <= ser.max);
+    boxes.forEach(([cb]) => { if (!cb.checked) cb.disabled = n >= ser.max; });
+  }
+  refresh();
+
+  const bonus = Object.entries(ser.bonus).map(([n, b]) => `${n} → +${b}`).join(' · ');
+  show(
+    h('button', { class: 'back', onclick: home }, '← Назад'),
+    h('h1', {}, 'Серия дня'),
+    h('p', { class: 'dim' }, `Угаданы все матчи серии: ${bonus}. Если не угадан хотя бы один, бонуса нет, обычные очки остаются.`),
+    rows.length
+      ? [info, rows, btn]
+      : h('div', { class: 'card' }, h('span', { class: 'dim' },
+          `Сначала сделай прогнозы на ${ser.min}–${ser.max} матчей ближайших двух суток: они появятся здесь.`))
+  );
+}
+
 /* ---------- лиги ---------- */
 
 const home = safe(async () => {
   setTab('home');
-  const list = await api('/leagues');
+  const [list, ser] = await Promise.all([api('/leagues'), api('/series')]);
   show(
     h('h1', {}, 'Лиги'),
+    seriesCard(ser),
     list.map(l =>
       h('div', { class: 'card link', onclick: () => league(l.code, l.name) },
         h('div', { class: 'row' },
@@ -159,7 +254,7 @@ const league = safe(async (code, name, matchday) => {
   d.matches.forEach(m => {
     const label = dayLabel(new Date(m.kickoff));
     if (label !== lastDay) { items.push(h('div', { class: 'day' }, label)); lastDay = label; }
-    items.push(matchCard(m));
+    items.push(matchCard(m, d.exact_bonus));
   });
 
   show(
@@ -172,23 +267,64 @@ const league = safe(async (code, name, matchday) => {
   );
 });
 
-function matchCard(m) {
+function matchCard(m, exact) {
   const kick = new Date(m.kickoff);
-  const labels = { H: 'П1', D: 'Ничья', A: 'П2' };
   const chip = h('span', { class: 'chip' });
+  const scoreBox = h('div', { class: 'scorebox' });
+  const frozen = () => m.locked || m.in_series;
 
   const segs = ['H', 'D', 'A'].map(k => {
-    const b = h('button', { class: 'segb', disabled: m.locked }, labels[k]);
+    const b = h('button', { class: 'segb', disabled: frozen() }, PICK[k]);
     b.dataset.k = k;
     b.addEventListener('click', async () => {
       try {
-        await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: k }) });
-        m.pick = k;
+        const r = await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: k }) });
+        m.pick = r.pick; m.my_home = r.home; m.my_away = r.away;
         paint();
       } catch (e) { alert(e.message); }
     });
     return b;
   });
+
+  function paintScore() {
+    const hasMine = m.my_home != null && m.my_away != null;
+    const hasReal = m.home_goals != null && m.away_goals != null;
+
+    if (frozen()) {
+      const parts = [];
+      if (hasMine) parts.push(`Твой счёт ${m.my_home}:${m.my_away}`);
+      if (m.result && hasReal) parts.push(`Итог ${m.home_goals}:${m.away_goals}`);
+      if (m.result && hasMine && hasReal && m.my_home === m.home_goals && m.my_away === m.away_goals) {
+        parts.push(`точный счёт +${exact}`);
+      }
+      scoreBox.replaceChildren(...(parts.length ? [h('div', { class: 'dim' }, parts.join(' · '))] : []));
+      return;
+    }
+
+    const a = h('input', { class: 'num', type: 'number', inputmode: 'numeric', min: 0, max: 9,
+      value: hasMine ? m.my_home : '' });
+    const b = h('input', { class: 'num', type: 'number', inputmode: 'numeric', min: 0, max: 9,
+      value: hasMine ? m.my_away : '' });
+    const save = h('button', { class: 'mini', onclick: async () => {
+      const home = parseInt(a.value, 10);
+      const away = parseInt(b.value, 10);
+      if (!(home >= 0 && home <= 9 && away >= 0 && away <= 9)) { alert('Введи счёт: два числа от 0 до 9'); return; }
+      try {
+        const r = await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, home, away }) });
+        m.pick = r.pick; m.my_home = r.home; m.my_away = r.away;
+        paint();
+      } catch (e) { alert(e.message); }
+    } }, 'ОК');
+    const clear = hasMine ? h('button', { class: 'mini ghost', onclick: async () => {
+      try {
+        await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: m.pick, clear_score: true }) });
+        m.my_home = null; m.my_away = null;
+        paint();
+      } catch (e) { alert(e.message); }
+    } }, '×') : '';
+    scoreBox.replaceChildren(h('div', { class: 'scorerow' },
+      h('span', { class: 'dim' }, `Точный счёт +${exact}`), a, ':', b, save, clear));
+  }
 
   function paint() {
     segs.forEach(b => {
@@ -207,7 +343,8 @@ function matchCard(m) {
       if (!m.pick) { text = 'Завершён'; }
       else if (m.pick === m.result) { text = 'Угадал'; cls = 'ok'; }
       else { text = 'Не угадал'; cls = 'bad'; }
-    } else if (m.locked) {
+    } else if (m.in_series) { text = 'В серии дня'; cls = 'wait'; }
+    else if (m.locked) {
       if (m.pick) { text = 'Ждём итог'; cls = 'live'; }
       else { text = 'Приём закрыт'; }
     } else {
@@ -216,6 +353,7 @@ function matchCard(m) {
     }
     chip.className = 'chip ' + cls;
     chip.textContent = text;
+    paintScore();
   }
   paint();
 
@@ -226,7 +364,8 @@ function matchCard(m) {
         h('div', {}, shortName(m.home)),
         h('div', {}, shortName(m.away))),
       chip),
-    h('div', { class: 'seg' }, segs));
+    h('div', { class: 'seg' }, segs),
+    scoreBox);
 }
 
 /* ---------- рейтинг ---------- */
@@ -252,20 +391,19 @@ const profile = safe(async () => {
   setTab('profile');
   me = await api('/me');
   const hist = await api('/me/predictions');
-  const labels = { H: 'П1', D: 'Ничья', A: 'П2' };
   show(
     h('h1', {}, me.nickname),
     h('div', { class: 'card' },
       h('div', { class: 'dim' }, 'Очки'),
       h('div', { class: 'stat' }, String(me.points)),
       h('div', { class: 'dim' },
-        `Винрейт ${me.winrate}% · угадано ${me.correct} из ${me.total} · серия ${me.streak} (лучшая ${me.best_streak})`)),
+        `Винрейт ${me.winrate}% · угадано ${me.correct} из ${me.total} · стрик ${me.streak} (лучший ${me.best_streak})`)),
     h('div', { class: 'card' },
       h('b', {}, 'Последние прогнозы'),
       hist.length
         ? hist.map(p => h('div', { class: 'rank' },
             h('span', {}, `${shortName(p.home)} — ${shortName(p.away)}`),
-            h('span', { class: 'dim' }, p.result ? (p.points ? `+${p.points}` : '0') : labels[p.pick])))
+            h('span', { class: 'dim' }, p.result ? (p.points ? `+${p.points}` : '0') : PICK[p.pick])))
         : h('div', { class: 'dim' }, 'Ты ещё не делал прогнозов.')),
     h('p', { class: 'dim' }, 'Только прогнозы. Без денег и призов, очки виртуальные и не выводятся. 18+'),
     h('p', { class: 'dim' }, 'Football data provided by the Football-Data.org API'),
@@ -291,8 +429,10 @@ function about() {
     h('h1', {}, 'О проекте'),
     block('Как начисляются очки',
       'Верный исход: 10 очков. Верная ничья: ещё +3.',
+      'Точный счёт (по желанию, за 90 минут): ещё +15.',
       'Редкий исход: чем меньше игроков выбрали тот же вариант, тем больше бонус (до +10). Он считается, когда на матч поставили 10 и более игроков.',
-      'Серия верных прогнозов подряд: 3 — +5, 5 — +10, 10 — +25. За ошибку очки не отнимаются.'),
+      'Стрик (верные прогнозы подряд): 3 — +5, 5 — +10, 10 — +25. За ошибку очки не отнимаются.',
+      'Серия дня: выбери 3–5 матчей ближайших двух суток. Угаданы все: 3 матча +20, 4 матча +35, 5 матчей +60. После сбора прогнозы на эти матчи менять нельзя. Если угадан не каждый, бонуса нет, но обычные очки остаются.'),
     block('Только для совершеннолетних (18+)',
       'Сервис предназначен только для лиц, достигших 18 лет. Если вам нет 18, пожалуйста, не пользуйтесь приложением.'),
     block('Это не азартная игра и не ставки',

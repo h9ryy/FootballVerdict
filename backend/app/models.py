@@ -20,7 +20,7 @@ class User(Base):
     points: Mapped[int] = mapped_column(Integer, default=0)
     total: Mapped[int] = mapped_column(Integer, default=0)      # сыграно прогнозов
     correct: Mapped[int] = mapped_column(Integer, default=0)    # угадано
-    streak: Mapped[int] = mapped_column(Integer, default=0)
+    streak: Mapped[int] = mapped_column(Integer, default=0)     # стрик: верные подряд
     best_streak: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -37,6 +37,8 @@ class Match(Base):
     kickoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     status: Mapped[str] = mapped_column(String(16), default="SCHEDULED")
     result: Mapped[str | None] = mapped_column(String(1), nullable=True)  # H / D / A
+    home_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)  # счёт за 90 минут
+    away_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
     settled: Mapped[bool] = mapped_column(default=False)
     predictions: Mapped[list["Prediction"]] = relationship(back_populates="match")
 
@@ -47,6 +49,8 @@ class Prediction(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
     pick: Mapped[str] = mapped_column(String(1))  # H / D / A
+    pred_home: Mapped[int | None] = mapped_column(Integer, nullable=True)  # прогноз точного счёта
+    pred_away: Mapped[int | None] = mapped_column(Integer, nullable=True)
     points_awarded: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     match: Mapped[Match] = relationship(back_populates="predictions")
@@ -54,3 +58,26 @@ class Prediction(Base):
         UniqueConstraint("user_id", "match_id"),
         Index("ix_pred_match", "match_id"),
     )
+
+
+class Series(Base):
+    """Серия дня: 3-5 матчей, бонус, если угаданы все."""
+    __tablename__ = "series"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    day: Mapped[str] = mapped_column(String(10))                    # день сбора по UTC: ГГГГ-ММ-ДД
+    status: Mapped[str] = mapped_column(String(8), default="open")  # open / won / lost / void
+    bonus_awarded: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    items: Mapped[list["SeriesMatch"]] = relationship(back_populates="series")
+    __table_args__ = (UniqueConstraint("user_id", "day"),)
+
+
+class SeriesMatch(Base):
+    __tablename__ = "series_matches"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(ForeignKey("series.id", ondelete="CASCADE"), index=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
+    series: Mapped[Series] = relationship(back_populates="items")
+    match: Mapped[Match] = relationship()
+    __table_args__ = (UniqueConstraint("series_id", "match_id"),)
