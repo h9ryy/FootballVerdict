@@ -10,7 +10,7 @@ if (tg) {
 const DEV_ID = new URLSearchParams(location.search).get('dev');
 const view = document.getElementById('view');
 let me = null;
-const CONTACT = '@hehevgsh5'; // ЗАМЕНИ на свой Telegram-ник или почту
+const CONTACT = '@твой_контакт'; // ЗАМЕНИ на свой Telegram-ник или почту
 
 /* ---------- вспомогательное ---------- */
 
@@ -201,7 +201,9 @@ function matchCard(m) {
 
     let text = '';
     let cls = '';
-    if (m.result) {
+    if (m.status === 'CANCELLED') { text = 'Отменён'; cls = 'bad'; }
+    else if (m.status === 'POSTPONED') { text = 'Перенесён'; cls = 'live'; }
+    else if (m.result) {
       if (!m.pick) { text = 'Завершён'; }
       else if (m.pick === m.result) { text = 'Угадал'; cls = 'ok'; }
       else { text = 'Не угадал'; cls = 'bad'; }

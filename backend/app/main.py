@@ -33,6 +33,11 @@ app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None)
 def aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
+LOCKED_STATUSES = {"IN_PLAY", "PAUSED", "FINISHED", "AWARDED", "CANCELLED", "SUSPENDED"}
+
+def is_locked(m: Match) -> bool:
+    """Приём прогнозов закрыт: матч начался, идёт, завершён или отменён."""
+    return aware(m.kickoff_at) <= datetime.now(timezone.utc) or m.status in LOCKED_STATUSES
 
 def me_dict(u: User) -> dict:
     wr = round(u.correct / u.total * 100) if u.total else 0
@@ -109,7 +114,7 @@ def league_matches(code: str, matchday: int | None = None,
     now = datetime.now(timezone.utc)
     return {"matchday": matchday, "matches": [
         {"id": m.id, "home": m.home, "away": m.away, "kickoff": aware(m.kickoff_at).isoformat(),
-         "locked": aware(m.kickoff_at) <= now, "result": m.result, "pick": picks.get(m.id)}
+         "locked": is_locked(m), "status": m.status, "result": m.result, "pick": picks.get(m.id)}
         for m in q]}
 
 
@@ -127,8 +132,8 @@ def predict(body: PickIn, u: User = Depends(current_user), db: Session = Depends
     m = db.get(Match, body.match_id)
     if not m:
         raise HTTPException(404)
-    if aware(m.kickoff_at) <= datetime.now(timezone.utc):
-        raise HTTPException(409, "Матч уже начался")
+    if is_locked(m):
+        raise HTTPException(409, "Приём прогнозов на этот матч закрыт")
     p = db.query(Prediction).filter_by(user_id=u.id, match_id=m.id).first()
     if p:
         p.pick = body.pick
