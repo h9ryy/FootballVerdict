@@ -117,3 +117,6 @@ label.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; m
 #nav button.on .ico { filter: none; opacity: 1; }
 #nav button.home { font-weight: 700; }
 #nav button.home .ico { font-size: 26px; }
+
+.gap { margin-bottom: 12px; }
+.law { line-height: 1.45; margin: 8px 0 0; }

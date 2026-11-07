@@ -12,6 +12,7 @@ from .db import Base, engine, get_db
 from .models import User, Match, Prediction
 from .auth import current_user
 from .sync import sync_loop
+from .bot import run_bot
 
 NICK_RE = re.compile(r"^[A-Za-zА-Яа-яЁё0-9_]{3,16}$")
 BANNED_PARTS: list[str] = []  # сюда добавим запрещённые слова для ников
@@ -20,10 +21,11 @@ BANNED_PARTS: list[str] = []  # сюда добавим запрещённые �
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)          # создать таблицы, если их нет
-    task = asyncio.create_task(sync_loop())   # запустить загрузку матчей в фоне
+    sync_task = asyncio.create_task(sync_loop())   # загрузка матчей в фоне
+    bot_task = asyncio.create_task(run_bot())      # бот в фоне
     yield
-    task.cancel()
-
+    sync_task.cancel()
+    bot_task.cancel()
 
 app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None)
 

@@ -9,6 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 FOOTBALL_DATA_TOKEN = os.getenv("FOOTBALL_DATA_TOKEN", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
 DEV_MODE = os.getenv("DEV_MODE", "0") == "1"
+WEBAPP_URL = os.getenv("WEBAPP_URL", "").rstrip("/")
 
 # лига: код в football-data.org -> название, которое увидит человек
 LEAGUES = {
