@@ -187,13 +187,43 @@ def predict(body: PickIn, u: User = Depends(current_user), db: Session = Depends
     db.commit()
     return {"ok": True, "pick": pick, "home": home, "away": away}
 
+@app.delete("/api/predictions/{match_id}")
+def cancel_prediction(match_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Отменить свой прогноз (пока матч не начался и не лежит в серии дня)."""
+    m = db.get(Match, match_id)
+    if not m:
+        raise HTTPException(404)
+    if is_locked(m):
+        raise HTTPException(409, "Приём прогнозов на этот матч закрыт")
+    if m.id in series_match_ids(db, u.id):
+        raise HTTPException(409, "Матч входит в серию дня: прогноз менять нельзя")
+    db.query(Prediction).filter_by(user_id=u.id, match_id=m.id).delete()
+    db.commit()
+    return {"ok": True}
+
 
 @app.get("/api/me/predictions")
-def my_predictions(u: User = Depends(current_user), db: Session = Depends(get_db)):
-    rows = (db.query(Prediction, Match).join(Match).filter(Prediction.user_id == u.id)
-            .order_by(Match.kickoff_at.desc()).limit(50).all())
-    return [{"home": m.home, "away": m.away, "pick": p.pick, "result": m.result,
-             "points": p.points_awarded} for p, m in rows]
+def my_predictions(offset: int = 0, db: Session = Depends(get_db), u: User = Depends(current_user)):
+    """Лента прогнозов: ждущие матча (на первой странице) и сыгранные (порциями по 30)."""
+    in_series = series_match_ids(db, u.id)
+
+    def item(p: Prediction, m: Match) -> dict:
+        return {"match_id": m.id, "league": LEAGUES.get(m.league, m.league),
+                "home": m.home, "away": m.away, "kickoff": aware(m.kickoff_at).isoformat(),
+                "status": m.status, "result": m.result, "locked": is_locked(m),
+                "pick": p.pick, "my_home": p.pred_home, "my_away": p.pred_away,
+                "home_goals": m.home_goals, "away_goals": m.away_goals,
+                "points": p.points_awarded, "in_series": m.id in in_series}
+
+    base = db.query(Prediction, Match).join(Match).filter(Prediction.user_id == u.id)
+    pending = []
+    if offset == 0:
+        pending = [item(p, m) for p, m in base.filter(Match.settled.is_(False))
+                   .order_by(Match.kickoff_at.asc()).limit(50).all()]
+    rows = (base.filter(Match.settled.is_(True)).order_by(Match.kickoff_at.desc())
+            .offset(max(offset, 0)).limit(31).all())
+    return {"pending": pending, "done": [item(p, m) for p, m in rows[:30]],
+            "has_more": len(rows) > 30}
 
 
 def series_dict(s: Series, picks: dict) -> dict:

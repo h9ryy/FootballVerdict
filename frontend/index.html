@@ -8,14 +8,21 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <header id="topbar">
+    <div id="pts"></div>
+    <button id="profileBtn" data-tab="profile" aria-label="Профиль">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c.6-3.7 3.7-5.8 7.5-5.8s6.9 2.1 7.5 5.8"/></svg>
+    </button>
+  </header>
+
   <main id="view"></main>
 
   <nav id="nav">
-    <button data-tab="profile">
-      <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c.6-3.7 3.7-5.8 7.5-5.8s6.9 2.1 7.5 5.8"/></svg></span>Профиль
+    <button data-tab="history">
+      <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></svg></span>История
     </button>
     <button data-tab="home" class="home">
-      <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 8.6l3.2 2.3-1.2 3.7h-4l-1.2-3.7z"/><path d="M12 8.6V2.8M15.2 10.9l5.2-1.8M14 14.6l3.2 4.4M10 14.6l-3.2 4.4M8.8 10.9L3.6 9.1"/></svg></span>Лиги
+      <span class="ico emoji">⚽</span>Лиги
     </button>
     <button data-tab="rating">
       <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5.2a4 4 0 0 1-8 0z" fill="currentColor" fill-opacity=".22"/><path d="M8 6H5.2v1.6A3.2 3.2 0 0 0 8 10.8M16 6h2.8v1.6a3.2 3.2 0 0 1-2.8 3.2M12 13.2V17M8.6 20h6.8M9.8 17h4.4"/></svg></span>Рейтинг

@@ -34,7 +34,7 @@ function h(tag, attrs, ...kids) {
   return el;
 }
 
-function show(...nodes) { view.replaceChildren(...nodes.flat()); }
+function show(...nodes) { view.replaceChildren(...nodes.flat(Infinity)); }
 
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -48,6 +48,21 @@ async function api(path, opts = {}) {
 
 function setTab(t) {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  document.getElementById('profileBtn').classList.toggle('on', t === 'profile');
+}
+
+// верхняя панель: очки слева, аватар (первая буква ника) справа
+const AVATAR_ICON = document.getElementById('profileBtn').innerHTML;
+function paintTop() {
+  const btn = document.getElementById('profileBtn');
+  const pts = document.getElementById('pts');
+  if (me && me.nickname) {
+    btn.textContent = me.nickname.charAt(0).toUpperCase();
+    pts.replaceChildren(h('small', {}, 'Очки'), String(me.points));
+  } else {
+    btn.innerHTML = AVATAR_ICON;
+    pts.replaceChildren();
+  }
 }
 
 // любой экран оборачиваем: при ошибке показываем её, а не белую страницу
@@ -134,6 +149,7 @@ function onboarding() {
             method: 'PUT',
             body: JSON.stringify({ nickname: input.value, adult: chk.checked }),
           });
+          paintTop();
           home();
         } catch (e) { err.textContent = e.message; }
       } }, 'Начать')
@@ -231,7 +247,9 @@ function seriesBuilder(ser) {
 
 const home = safe(async () => {
   setTab('home');
-  const [list, ser] = await Promise.all([api('/leagues'), api('/series')]);
+  const [list, ser, mine] = await Promise.all([api('/leagues'), api('/series'), api('/me')]);
+  me = mine;
+  paintTop();
   show(
     h('h1', {}, 'Лиги'),
     seriesCard(ser),
@@ -263,6 +281,7 @@ const league = safe(async (code, name, matchday) => {
       h('button', { class: 'arrow', onclick: () => md > 1 && league(code, name, md - 1) }, '‹'),
       h('div', { class: 'ttl' }, h('h1', {}, name), h('div', { class: 'dim' }, `Тур ${md}`)),
       h('button', { class: 'arrow', onclick: () => league(code, name, md + 1) }, '›')),
+    h('p', { class: 'dim center' }, 'Нажми на выбранный исход ещё раз, чтобы отменить прогноз'),
     items.length ? items : h('p', { class: 'dim center' }, 'В этом туре нет матчей.')
   );
 });
@@ -272,19 +291,34 @@ function matchCard(m, exact) {
   const chip = h('span', { class: 'chip' });
   const scoreBox = h('div', { class: 'scorebox' });
   const frozen = () => m.locked || m.in_series;
+  let scoreOpen = false;      // открыт ли блок ввода точного счёта
+  let draft = [0, 0];         // счёт, который сейчас выбирается кнопками − и +
 
   const segs = ['H', 'D', 'A'].map(k => {
     const b = h('button', { class: 'segb', disabled: frozen() }, PICK[k]);
     b.dataset.k = k;
     b.addEventListener('click', async () => {
       try {
-        const r = await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: k }) });
-        m.pick = r.pick; m.my_home = r.home; m.my_away = r.away;
+        if (m.pick === k) {                       // повторное нажатие: отмена прогноза
+          await api(`/predictions/${m.id}`, { method: 'DELETE' });
+          m.pick = null; m.my_home = null; m.my_away = null;
+        } else {
+          const r = await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: k }) });
+          m.pick = r.pick; m.my_home = r.home; m.my_away = r.away;
+        }
+        scoreOpen = false;
         paint();
       } catch (e) { alert(e.message); }
     });
     return b;
   });
+
+  function stepper(i) {
+    const val = h('span', { class: 'sval' }, String(draft[i]));
+    const minus = h('button', { class: 'step', onclick: () => { draft[i] = Math.max(0, draft[i] - 1); val.textContent = String(draft[i]); } }, '−');
+    const plus = h('button', { class: 'step', onclick: () => { draft[i] = Math.min(9, draft[i] + 1); val.textContent = String(draft[i]); } }, '+');
+    return h('div', { class: 'stepper' }, minus, val, plus);
+  }
 
   function paintScore() {
     const hasMine = m.my_home != null && m.my_away != null;
@@ -301,29 +335,37 @@ function matchCard(m, exact) {
       return;
     }
 
-    const a = h('input', { class: 'num', type: 'number', inputmode: 'numeric', min: 0, max: 9,
-      value: hasMine ? m.my_home : '' });
-    const b = h('input', { class: 'num', type: 'number', inputmode: 'numeric', min: 0, max: 9,
-      value: hasMine ? m.my_away : '' });
-    const save = h('button', { class: 'mini', onclick: async () => {
-      const home = parseInt(a.value, 10);
-      const away = parseInt(b.value, 10);
-      if (!(home >= 0 && home <= 9 && away >= 0 && away <= 9)) { alert('Введи счёт: два числа от 0 до 9'); return; }
-      try {
-        const r = await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, home, away }) });
-        m.pick = r.pick; m.my_home = r.home; m.my_away = r.away;
-        paint();
-      } catch (e) { alert(e.message); }
-    } }, 'ОК');
-    const clear = hasMine ? h('button', { class: 'mini ghost', onclick: async () => {
-      try {
-        await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: m.pick, clear_score: true }) });
-        m.my_home = null; m.my_away = null;
-        paint();
-      } catch (e) { alert(e.message); }
-    } }, '×') : '';
-    scoreBox.replaceChildren(h('div', { class: 'scorerow' },
-      h('span', { class: 'dim' }, `Точный счёт +${exact}`), a, ':', b, save, clear));
+    if (scoreOpen) {                              // выбор счёта кнопками − и +
+      const save = h('button', { class: 'mini', onclick: async () => {
+        try {
+          const r = await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, home: draft[0], away: draft[1] }) });
+          m.pick = r.pick; m.my_home = r.home; m.my_away = r.away;
+          scoreOpen = false;
+          paint();
+        } catch (e) { alert(e.message); }
+      } }, 'Сохранить');
+      const cancel = h('button', { class: 'mini ghost', onclick: () => { scoreOpen = false; paintScore(); } }, 'Отмена');
+      scoreBox.replaceChildren(h('div', { class: 'scorerow' }, stepper(0), ':', stepper(1), save, cancel));
+      return;
+    }
+
+    if (hasMine) {                                // счёт уже сохранён
+      const edit = h('button', { class: 'mini', onclick: () => { draft = [m.my_home, m.my_away]; scoreOpen = true; paintScore(); } }, 'Изменить');
+      const clear = h('button', { class: 'mini ghost', onclick: async () => {
+        try {
+          await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: m.pick, clear_score: true }) });
+          m.my_home = null; m.my_away = null;
+          paint();
+        } catch (e) { alert(e.message); }
+      } }, '×');
+      scoreBox.replaceChildren(h('div', { class: 'scorerow' },
+        h('span', { class: 'dim' }, `Твой счёт ${m.my_home}:${m.my_away}`), edit, clear));
+      return;
+    }
+
+    // по умолчанию счёт скрыт: достаточно выбрать П1, Ничья или П2
+    scoreBox.replaceChildren(h('button', { class: 'linkbtn', onclick: () => { draft = [0, 0]; scoreOpen = true; paintScore(); } },
+      `+ Точный счёт: ещё +${exact} очков (по желанию)`));
   }
 
   function paint() {
@@ -385,12 +427,70 @@ const rating = safe(async () => {
   );
 });
 
+/* ---------- история ---------- */
+
+function historyRow(it) {
+  const k = new Date(it.kickoff);
+  const mine = PICK[it.pick] + (it.my_home != null ? ` (${it.my_home}:${it.my_away})` : '');
+  const real = it.result && it.home_goals != null ? ` · итог ${it.home_goals}:${it.away_goals}` : '';
+  let chip;
+  if (it.status === 'CANCELLED') chip = h('span', { class: 'chip bad' }, 'Отменён');
+  else if (it.result) {
+    const ok = it.pick === it.result;
+    chip = h('span', { class: 'chip ' + (ok ? 'ok' : 'bad') }, ok ? `+${it.points || 0}` : '0');
+  } else if (it.in_series) chip = h('span', { class: 'chip wait' }, 'В серии');
+  else if (it.locked) chip = h('span', { class: 'chip live' }, 'Ждём итог');
+  else chip = h('span', { class: 'chip wait' }, 'Ждёт матча');
+  return h('div', { class: 'card hrow' },
+    h('div', { class: 'hmain' },
+      h('div', { class: 'teams' }, `${shortName(it.home)} — ${shortName(it.away)}`),
+      h('div', { class: 'dim' }, `${it.league} · ${timeStr(k)} · ${mine}${real}`)),
+    chip);
+}
+
+function feedNodes(items, state) {
+  const out = [];
+  items.forEach(it => {
+    const label = dayLabel(new Date(it.kickoff));
+    if (label !== state.last) { out.push(h('div', { class: 'day' }, label)); state.last = label; }
+    out.push(historyRow(it));
+  });
+  return out;
+}
+
+const historyTab = safe(async () => {
+  setTab('history');
+  const first = await api('/me/predictions');
+  let offset = first.done.length;
+  const doneState = { last: '' };
+  const doneBox = h('div', {});
+  const moreBtn = h('button', { class: 'btn', onclick: async () => {
+    try {
+      const r = await api(`/me/predictions?offset=${offset}`);
+      offset += r.done.length;
+      doneBox.append(...feedNodes(r.done, doneState));
+      moreBtn.style.display = r.has_more ? '' : 'none';
+    } catch (e) { alert(e.message); }
+  } }, 'Показать ещё');
+  doneBox.append(...feedNodes(first.done, doneState));
+  moreBtn.style.display = first.has_more ? '' : 'none';
+
+  show(
+    h('h1', {}, 'История'),
+    (!first.pending.length && !first.done.length)
+      ? h('div', { class: 'card' }, h('span', { class: 'dim' }, 'Здесь появятся твои прогнозы. Выбери матч на экране «Лиги».'))
+      : '',
+    first.pending.length ? [h('div', { class: 'day' }, 'Ждут матча'), feedNodes(first.pending, { last: '' })] : '',
+    first.done.length ? [h('div', { class: 'day' }, 'Сыграно'), doneBox, moreBtn] : ''
+  );
+});
+
 /* ---------- профиль ---------- */
 
 const profile = safe(async () => {
   setTab('profile');
   me = await api('/me');
-  const hist = await api('/me/predictions');
+  paintTop();
   show(
     h('h1', {}, me.nickname),
     h('div', { class: 'card' },
@@ -398,13 +498,6 @@ const profile = safe(async () => {
       h('div', { class: 'stat' }, String(me.points)),
       h('div', { class: 'dim' },
         `Винрейт ${me.winrate}% · угадано ${me.correct} из ${me.total} · стрик ${me.streak} (лучший ${me.best_streak})`)),
-    h('div', { class: 'card' },
-      h('b', {}, 'Последние прогнозы'),
-      hist.length
-        ? hist.map(p => h('div', { class: 'rank' },
-            h('span', {}, `${shortName(p.home)} — ${shortName(p.away)}`),
-            h('span', { class: 'dim' }, p.result ? (p.points ? `+${p.points}` : '0') : PICK[p.pick])))
-        : h('div', { class: 'dim' }, 'Ты ещё не делал прогнозов.')),
     h('p', { class: 'dim' }, 'Только прогнозы. Без денег и призов, очки виртуальные и не выводятся. 18+'),
     h('p', { class: 'dim' }, 'Football data provided by the Football-Data.org API'),
     h('button', { class: 'btn gap', onclick: about }, 'О проекте и правила (18+)'),
@@ -453,16 +546,20 @@ function about() {
 
 /* ---------- запуск ---------- */
 
-document.querySelectorAll('#nav button').forEach(b => b.addEventListener('click', () => {
+function go(tab) {
   if (!me || !me.nickname) return onboarding();
-  ({ home, rating, profile })[b.dataset.tab]();
-}));
+  ({ home, rating, history: historyTab, profile })[tab]();
+}
+
+document.querySelectorAll('#nav button, #profileBtn').forEach(b =>
+  b.addEventListener('click', () => go(b.dataset.tab)));
 
 (async () => {
   try {
     const cfg = await api('/config');
     document.title = cfg.app_name;
     me = await api('/me');
+    paintTop();
     me.nickname ? home() : onboarding();
   } catch (e) {
     show(h('p', { class: 'err' }, e.message));
