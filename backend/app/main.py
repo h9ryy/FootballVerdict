@@ -1,5 +1,5 @@
 import asyncio, re
-from .config import LEAGUES, APP_NAME, CONSENT_VERSION
+from .config import LEAGUES, APP_NAME
 from .auth import current_user, identity
 from .retention import delete_user_data, retention_loop
 from contextlib import asynccontextmanager
@@ -83,16 +83,13 @@ def me(tg_id: int = Depends(identity), db: Session = Depends(get_db)):
 class RegisterIn(BaseModel):
     nickname: str
     adult: bool
-    consent: bool
 
 
 @app.post("/api/register")
 def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Depends(get_db)):
-    """Первый вход: 18+ и согласие на обработку данных одним шагом. Только после него создаётся запись."""
+    """Первый вход: подтверждение 18+ и ник. Запись о человеке создаётся только после этого."""
     if not body.adult:
         raise HTTPException(400, "Сервис только для совершеннолетних (18+)")
-    if not body.consent:
-        raise HTTPException(400, "Нужно согласие на обработку персональных данных")
     nick = body.nickname.strip()
     if not NICK_RE.match(nick):
         raise HTTPException(400, "Ник: 3–16 символов, буквы, цифры и _")
@@ -104,7 +101,7 @@ def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Dep
         raise HTTPException(409, "Ник уже занят")
     now = datetime.now(timezone.utc)
     u = User(telegram_id=tg_id, nickname=nick, nickname_lower=nick.lower(),
-             adult_confirmed_at=now, consent_at=now, consent_version=CONSENT_VERSION, last_seen_at=now)
+             adult_confirmed_at=now, last_seen_at=now)
     db.add(u)
     try:
         db.commit()
