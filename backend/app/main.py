@@ -230,7 +230,7 @@ def my_predictions(offset: int = 0, db: Session = Depends(get_db), u: User = Dep
     rows = (base.filter(Match.settled.is_(True)).order_by(Match.kickoff_at.desc())
             .offset(max(offset, 0)).limit(31).all())
     return {"pending": pending, "done": [item(p, m) for p, m in rows[:30]],
-            "has_more": len(rows) > 30}
+        "has_more": len(rows) > 30, "exact_bonus": EXACT_BONUS}
 
 
 def series_dict(s: Series, picks: dict) -> dict:

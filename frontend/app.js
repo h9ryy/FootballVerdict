@@ -302,7 +302,7 @@ const league = safe(async (code, name, matchday) => {
   );
 });
 
-function matchCard(m, exact) {
+function matchCard(m, exact, onRemoved) {
   const kick = new Date(m.kickoff);
   const chip = h('span', { class: 'chip' });
   const scoreBox = h('div', { class: 'scorebox' });
@@ -318,6 +318,7 @@ function matchCard(m, exact) {
         if (m.pick === k) {                       // повторное нажатие: отмена прогноза
           await api(`/predictions/${m.id}`, { method: 'DELETE' });
           m.pick = null; m.my_home = null; m.my_away = null;
+          if (onRemoved) { onRemoved(); return; }
         } else {
           const r = await api('/predictions', { method: 'POST', body: JSON.stringify({ match_id: m.id, pick: k }) });
           m.pick = r.pick; m.my_home = r.home; m.my_away = r.away;
@@ -420,7 +421,8 @@ function matchCard(m, exact) {
       h('div', { class: 'time' }, timeStr(kick)),
       h('div', { class: 'teams2' },
         h('div', {}, shortName(m.home)),
-        h('div', {}, shortName(m.away))),
+        h('div', {}, shortName(m.away)),
+        m.league ? h('div', { class: 'lg' }, m.league) : ''),
       chip),
     h('div', { class: 'seg' }, segs),
     scoreBox);
@@ -491,12 +493,26 @@ const historyTab = safe(async () => {
   doneBox.append(...feedNodes(first.done, doneState));
   moreBtn.style.display = first.has_more ? '' : 'none';
 
+  // ждущие матча: полноценные карточки, прогноз и счёт можно менять прямо здесь
+  const pendingNodes = [];
+  let lastDay = '';
+  first.pending.forEach(it => {
+    const label = dayLabel(new Date(it.kickoff));
+    if (label !== lastDay) { pendingNodes.push(h('div', { class: 'day' }, label)); lastDay = label; }
+    const card = matchCard({ ...it, id: it.match_id }, first.exact_bonus, () => card.remove());
+    pendingNodes.push(card);
+  });
+
   show(
     h('h1', {}, 'История'),
     (!first.pending.length && !first.done.length)
       ? h('div', { class: 'card' }, h('span', { class: 'dim' }, 'Здесь появятся твои прогнозы. Выбери матч на экране «Лиги».'))
       : '',
-    first.pending.length ? [h('div', { class: 'day' }, 'Ждут матча'), feedNodes(first.pending, { last: '' })] : '',
+    first.pending.length
+      ? [h('div', { class: 'day' }, 'Ждут матча'),
+         h('p', { class: 'dim' }, 'Пока матч не начался, прогноз и счёт можно поменять прямо здесь.'),
+         pendingNodes]
+      : '',
     first.done.length ? [h('div', { class: 'day' }, 'Сыграно'), doneBox, moreBtn] : ''
   );
 });

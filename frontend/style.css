@@ -231,3 +231,4 @@ label.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; m
 
 a { color: var(--neon); }
 .chk span { line-height: 1.4; }
+.teams2 .lg { font-size: 11px; font-weight: 600; color: var(--text-dim); }
