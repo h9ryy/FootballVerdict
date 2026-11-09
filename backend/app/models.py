@@ -17,12 +17,16 @@ class User(Base):
     nickname: Mapped[str | None] = mapped_column(String(16), nullable=True)
     nickname_lower: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True)
     adult_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consent_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     points: Mapped[int] = mapped_column(Integer, default=0)
     total: Mapped[int] = mapped_column(Integer, default=0)      # сыграно прогнозов
     correct: Mapped[int] = mapped_column(Integer, default=0)    # угадано
     streak: Mapped[int] = mapped_column(Integer, default=0)     # стрик: верные подряд
     best_streak: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    
 
 
 class Match(Base):

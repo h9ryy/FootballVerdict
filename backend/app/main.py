@@ -1,4 +1,7 @@
 import asyncio, re
+from .config import LEAGUES, APP_NAME, CONSENT_VERSION
+from .auth import current_user, identity
+from .retention import delete_user_data, retention_loop
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -8,10 +11,8 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from .config import LEAGUES, APP_NAME
 from .db import Base, engine, get_db
 from .models import User, Match, Prediction, Series, SeriesMatch
-from .auth import current_user
 from .sync import sync_loop
 from .bot import run_bot
 from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS)
@@ -22,13 +23,14 @@ BANNED_PARTS: list[str] = []  # сюда добавим запрещённые �
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(engine)               # создать таблицы, если их нет
-    sync_task = asyncio.create_task(sync_loop())   # загрузка матчей в фоне
-    bot_task = asyncio.create_task(run_bot())      # бот в фоне
+    Base.metadata.create_all(engine)                       # создать таблицы, если их нет
+    sync_task = asyncio.create_task(sync_loop())           # загрузка матчей в фоне
+    bot_task = asyncio.create_task(run_bot())              # бот в фоне
+    retention_task = asyncio.create_task(retention_loop()) # удаление давно неактивных профилей
     yield
     sync_task.cancel()
     bot_task.cancel()
-
+    retention_task.cancel()
 
 app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None)
 
@@ -70,45 +72,53 @@ def config():
 
 
 @app.get("/api/me")
-def me(u: User = Depends(current_user)):
-    return me_dict(u)
+def me(tg_id: int = Depends(identity), db: Session = Depends(get_db)):
+    """Профиль. Пока человек не принял условия, запись о нём НЕ создаётся."""
+    u = db.query(User).filter_by(telegram_id=tg_id).first()
+    if not u:
+        return {"registered": False}
+    return {"registered": True, **me_dict(u)}
 
 
-class NickIn(BaseModel):
+class RegisterIn(BaseModel):
     nickname: str
     adult: bool
+    consent: bool
 
 
-@app.put("/api/me/nickname")
-def set_nick(body: NickIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+@app.post("/api/register")
+def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Depends(get_db)):
+    """Первый вход: 18+ и согласие на обработку данных одним шагом. Только после него создаётся запись."""
+    if not body.adult:
+        raise HTTPException(400, "Сервис только для совершеннолетних (18+)")
+    if not body.consent:
+        raise HTTPException(400, "Нужно согласие на обработку персональных данных")
     nick = body.nickname.strip()
     if not NICK_RE.match(nick):
         raise HTTPException(400, "Ник: 3–16 символов, буквы, цифры и _")
     if any(w in nick.lower() for w in BANNED_PARTS):
         raise HTTPException(400, "Этот ник недоступен")
-    if not body.adult:
-        raise HTTPException(400, "Сервис только для совершеннолетних (18+)")
-    taken = db.query(User).filter(User.nickname_lower == nick.lower(), User.id != u.id).first()
-    if taken:
+    if db.query(User).filter_by(telegram_id=tg_id).first():
+        raise HTTPException(409, "Ты уже зарегистрирован")
+    if db.query(User).filter(User.nickname_lower == nick.lower()).first():
         raise HTTPException(409, "Ник уже занят")
-    u.nickname, u.nickname_lower = nick, nick.lower()
-    u.adult_confirmed_at = u.adult_confirmed_at or datetime.now(timezone.utc)
-    db.commit()
-    return me_dict(u)
+    now = datetime.now(timezone.utc)
+    u = User(telegram_id=tg_id, nickname=nick, nickname_lower=nick.lower(),
+             adult_confirmed_at=now, consent_at=now, consent_version=CONSENT_VERSION, last_seen_at=now)
+    db.add(u)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Ник уже занят")
+    return {"registered": True, **me_dict(u)}
 
 
 @app.delete("/api/me")
 def delete_me(u: User = Depends(current_user), db: Session = Depends(get_db)):
     """Право на удаление: стираем аккаунт, прогнозы и серии."""
-    sids = [s.id for s in db.query(Series).filter_by(user_id=u.id).all()]
-    if sids:
-        db.query(SeriesMatch).filter(SeriesMatch.series_id.in_(sids)).delete(synchronize_session=False)
-        db.query(Series).filter(Series.id.in_(sids)).delete(synchronize_session=False)
-    db.query(Prediction).filter_by(user_id=u.id).delete()
-    db.delete(u)
-    db.commit()
+    delete_user_data(db, u)
     return {"ok": True}
-
 
 @app.get("/api/leagues")
 def leagues(db: Session = Depends(get_db), u: User = Depends(current_user)):

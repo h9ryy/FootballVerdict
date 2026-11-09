@@ -56,7 +56,7 @@ const AVATAR_ICON = document.getElementById('profileBtn').innerHTML;
 function paintTop() {
   const btn = document.getElementById('profileBtn');
   const pts = document.getElementById('pts');
-  if (me && me.nickname) {
+  if (me && me.registered) {
     btn.textContent = me.nickname.charAt(0).toUpperCase();
     pts.replaceChildren(h('small', {}, 'Очки'), String(me.points));
   } else {
@@ -127,32 +127,43 @@ function timeStr(d) {
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-/* ---------- первый вход: ник и 18+ ---------- */
+/* ---------- первый вход: 18+ и согласие ---------- */
 
 function onboarding() {
   setTab('');
   const input = h('input', { type: 'text', placeholder: 'Ник (3–16 символов)', maxlength: 16 });
-  const chk = h('input', { type: 'checkbox' });
+  const adult = h('input', { type: 'checkbox' });
+  const consent = h('input', { type: 'checkbox' });
   const err = h('div', { class: 'err' });
+  const start = h('button', { class: 'btn', disabled: true, onclick: async () => {
+    try {
+      me = await api('/register', {
+        method: 'POST',
+        body: JSON.stringify({ nickname: input.value, adult: adult.checked, consent: consent.checked }),
+      });
+      paintTop();
+      home();
+    } catch (e) { err.textContent = e.message; }
+  } }, 'Начать');
+  const sync = () => { start.disabled = !(adult.checked && consent.checked); };
+  adult.addEventListener('change', sync);
+  consent.addEventListener('change', sync);
+
   show(
     h('h1', {}, 'Добро пожаловать'),
     h('div', { class: 'card' },
-      h('p', {}, 'Придумай ник. Больше мы ничего не просим: имя и данные из Telegram не сохраняются.'),
+      h('p', {}, 'Придумай ник. Его увидят другие игроки в рейтинге, поэтому не используй настоящие имя и фамилию.'),
       input,
-      h('label', { class: 'chk' }, chk,
-        'Мне есть 18 лет. Я понимаю, что здесь только прогнозы: без денег и призов, очки виртуальные.'),
+      h('label', { class: 'chk' }, adult, h('span', {}, 'Мне есть 18 лет.')),
+      h('label', { class: 'chk' }, consent,
+        h('span', {}, 'Я согласен на обработку персональных данных (ID в Telegram, ник, прогнозы и очки) на условиях ',
+          h('a', { href: '/consent.html', target: '_blank' }, 'Согласия'), '.')),
+      h('p', { class: 'dim' }, 'Продолжая, ты принимаешь ',
+        h('a', { href: '/legal.html#rules', target: '_blank' }, 'Правила игры'), ' и знакомишься с ',
+        h('a', { href: '/legal.html#privacy', target: '_blank' }, 'Политикой конфиденциальности'),
+        '. Здесь только прогнозы: без денег и призов, очки виртуальные.'),
       err,
-      h('button', { class: 'back', onclick: about }, 'Условия и правила'),
-      h('button', { class: 'btn', onclick: async () => {
-        try {
-          me = await api('/me/nickname', {
-            method: 'PUT',
-            body: JSON.stringify({ nickname: input.value, adult: chk.checked }),
-          });
-          paintTop();
-          home();
-        } catch (e) { err.textContent = e.message; }
-      } }, 'Начать')
+      start
     )
   );
 }
@@ -514,7 +525,7 @@ const profile = safe(async () => {
 
 function about() {
   setTab('profile');
-  const back = (me && me.nickname) ? profile : onboarding;
+  const back = (me && me.registered) ? profile : onboarding;
   const block = (title, ...lines) =>
     h('div', { class: 'card' }, h('b', {}, title), lines.map(t => h('p', { class: 'dim law' }, t)));
   show(
@@ -538,8 +549,10 @@ function about() {
       'Данные о матчах и результатах предоставлены Football-Data.org (football-data.org). Они могут приходить с задержкой или содержать неточности и носят информационный характер.',
       'Названия клубов и турниров принадлежат их правообладателям. Проект с ними не связан и ими не одобрен.'),
     block('Ваши данные',
-      'Мы храним только придуманный вами ник, технический идентификатор Telegram (нужен для входа), ваши прогнозы и очки. Имя, номер телефона и фото из Telegram не сохраняются.',
-      'Данные можно удалить в любой момент: Профиль → «Удалить мои данные».'),
+      'Мы храним придуманный вами ник, технический идентификатор Telegram (нужен для входа), отметку о подтверждении возраста, ваши прогнозы и очки. В журналах сервера временно сохраняется IP-адрес. Имя, номер телефона и фото из Telegram не сохраняются.',
+      'Ваш ник, очки и процент угаданных прогнозов видны другим игрокам в рейтинге. Telegram-username не показывается.',
+      'Профиль, который не открывался больше 12 месяцев, удаляется автоматически. Данные можно удалить в любой момент: Профиль → «Удалить мои данные».',
+      h('a', { href: '/privacy.html', target: '_blank' }, 'Политика обработки персональных данных')),
     block('Связь', 'Вопросы и обращения: ' + CONTACT)
   );
 }
@@ -547,7 +560,7 @@ function about() {
 /* ---------- запуск ---------- */
 
 function go(tab) {
-  if (!me || !me.nickname) return onboarding();
+  if (!me || !me.registered) return onboarding();
   ({ home, rating, history: historyTab, profile })[tab]();
 }
 
@@ -560,7 +573,7 @@ document.querySelectorAll('#nav button, #profileBtn').forEach(b =>
     document.title = cfg.app_name;
     me = await api('/me');
     paintTop();
-    me.nickname ? home() : onboarding();
+    me.registered ? home() : onboarding();
   } catch (e) {
     show(h('p', { class: 'err' }, e.message));
   }

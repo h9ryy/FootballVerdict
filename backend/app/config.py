@@ -20,3 +20,6 @@ LEAGUES = {
     "FL1": "Лига 1",
     "CL": "Лига чемпионов",
 }
+
+INACTIVE_DELETE_DAYS = int(os.getenv("INACTIVE_DELETE_DAYS", "365"))  # через сколько дней без входа профиль удаляется
+CONSENT_VERSION = "2026-11-08"  # версия текста согласия: меняй, когда меняешь consent.html

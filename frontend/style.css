@@ -228,3 +228,6 @@ label.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; m
   background: none; border: 0; padding: 6px 0; color: var(--neon);
   font-size: 14px; font-weight: 700; cursor: pointer; text-align: left;
 }
+
+a { color: var(--neon); }
+.chk span { line-height: 1.4; }
