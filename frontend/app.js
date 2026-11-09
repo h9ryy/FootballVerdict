@@ -13,6 +13,20 @@ let me = null;
 const CONTACT = '@hehevgsh5'; // ЗАМЕНИ на свой Telegram-ник или почту
 
 const PICK = { H: 'П1', D: 'Ничья', A: 'П2' };
+
+// В Telegram встроенные alert и confirm работают не везде: используем окна самого Telegram
+const nativeAlert = window.alert.bind(window);
+window.alert = text => {
+  if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.2') && tg.showAlert) tg.showAlert(String(text));
+  else nativeAlert(text);
+};
+
+function askConfirm(text) {
+  return new Promise(resolve => {
+    if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.2') && tg.showConfirm) tg.showConfirm(text, ok => resolve(!!ok));
+    else resolve(window.confirm(text));
+  });
+}
 const SERIES_STATUS = {
   open: ['В игре', 'wait'],
   won: ['Выиграна', 'ok'],
@@ -203,7 +217,7 @@ function seriesBuilder(ser) {
   const chosen = new Set();
   const info = h('div', { class: 'dim center gap' });
   const btn = h('button', { class: 'btn', disabled: true, onclick: async () => {
-    if (!confirm('Собрать серию? Прогнозы на эти матчи после этого нельзя будет менять.')) return;
+    if (!(await askConfirm('Собрать серию? Прогнозы на эти матчи после этого нельзя будет менять.'))) return;
     try {
       await api('/series', { method: 'POST', body: JSON.stringify({ match_ids: [...chosen] }) });
       home();
@@ -504,10 +518,13 @@ const profile = safe(async () => {
     h('p', { class: 'dim' }, 'Football data provided by the Football-Data.org API'),
     h('button', { class: 'btn gap', onclick: about }, 'О проекте и правила (18+)'),
     h('button', { class: 'btn danger', onclick: async () => {
-      if (confirm('Удалить аккаунт и все прогнозы? Это необратимо.')) {
+      if (!(await askConfirm('Удалить аккаунт и все прогнозы? Это необратимо.'))) return;
+      try {
         await api('/me', { method: 'DELETE' });
-        tg ? tg.close() : location.reload();
-      }
+        me = { registered: false };
+        paintTop();
+        onboarding();
+      } catch (e) { alert(e.message); }
     } }, 'Удалить мои данные')
   );
 });
