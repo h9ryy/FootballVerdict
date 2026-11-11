@@ -493,14 +493,28 @@ const historyTab = safe(async () => {
   doneBox.append(...feedNodes(first.done, doneState));
   moreBtn.style.display = first.has_more ? '' : 'none';
 
-  // ждущие матча: полноценные карточки, прогноз и счёт можно менять прямо здесь
-  const pendingNodes = [];
-  let lastDay = '';
+  // ждущие матча: карточки сгруппированы по дням, пустые группы убираются
+  const pendingBox = h('div', {});
+  const pendingHead = h('div', {},
+    h('div', { class: 'day' }, 'Ждут матча'),
+    h('p', { class: 'dim' }, 'Пока матч не начался, прогноз и счёт можно поменять прямо здесь.'),
+    pendingBox);
+  let curLabel = '';
+  let curBox = null;
   first.pending.forEach(it => {
     const label = dayLabel(new Date(it.kickoff));
-    if (label !== lastDay) { pendingNodes.push(h('div', { class: 'day' }, label)); lastDay = label; }
-    const card = matchCard({ ...it, id: it.match_id }, first.exact_bonus, () => card.remove());
-    pendingNodes.push(card);
+    if (label !== curLabel) {
+      curLabel = label;
+      curBox = h('div', {}, h('div', { class: 'day' }, label));
+      pendingBox.append(curBox);
+    }
+    const box = curBox;
+    const card = matchCard({ ...it, id: it.match_id }, first.exact_bonus, () => {
+      card.remove();
+      if (!box.querySelector('.card')) box.remove();                  // день без карточек
+      if (!pendingBox.children.length) pendingHead.remove();          // весь блок «Ждут матча»
+    });
+    box.append(card);
   });
 
   show(
@@ -508,11 +522,7 @@ const historyTab = safe(async () => {
     (!first.pending.length && !first.done.length)
       ? h('div', { class: 'card' }, h('span', { class: 'dim' }, 'Здесь появятся твои прогнозы. Выбери матч на экране «Лиги».'))
       : '',
-    first.pending.length
-      ? [h('div', { class: 'day' }, 'Ждут матча'),
-         h('p', { class: 'dim' }, 'Пока матч не начался, прогноз и счёт можно поменять прямо здесь.'),
-         pendingNodes]
-      : '',
+    first.pending.length ? pendingHead : '',
     first.done.length ? [h('div', { class: 'day' }, 'Сыграно'), doneBox, moreBtn] : ''
   );
 });
