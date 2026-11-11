@@ -533,17 +533,31 @@ const profile = safe(async () => {
     h('p', { class: 'dim' }, 'Только прогнозы. Без денег и призов, очки виртуальные и не выводятся. 18+'),
     h('p', { class: 'dim' }, 'Football data provided by the Football-Data.org API'),
     h('button', { class: 'btn gap', onclick: about }, 'О проекте и правила (18+)'),
-    h('button', { class: 'btn danger', onclick: async () => {
-      if (!(await askConfirm('Удалить аккаунт и все прогнозы? Это необратимо.'))) return;
-      try {
-        await api('/me', { method: 'DELETE' });
-        me = { registered: false };
-        paintTop();
-        onboarding();
-      } catch (e) { alert(e.message); }
-    } }, 'Удалить мои данные')
+    h('button', { class: 'btn danger', onclick: confirmDelete }, 'Удалить мои данные')
   );
 });
+
+/* ---------- удаление аккаунта ---------- */
+
+function confirmDelete() {
+  setTab('profile');
+  show(
+    h('h1', {}, 'Точно удалить аккаунт?'),
+    h('div', { class: 'card' },
+      h('p', {}, 'Мы навсегда сотрём твой ник, прогнозы, очки и серии. Восстановить их не получится: придётся начинать с нуля.'),
+      h('button', { class: 'btn danger gap', onclick: doDelete }, 'Да, удалить навсегда'),
+      h('button', { class: 'btn', onclick: profile }, 'Нет, оставить аккаунт'))
+  );
+}
+
+async function doDelete() {
+  try {
+    await api('/me', { method: 'DELETE' });
+    me = { registered: false };
+    paintTop();
+    onboarding();
+  } catch (e) { alert(e.message); }
+}
 
 /* ---------- о проекте ---------- */
 
@@ -575,7 +589,8 @@ function about() {
     block('Ваши данные',
       'Мы храним только ваш ID в Telegram, придуманный ник, прогнозы, очки и статистику. Имя, телефон, почту и фото мы не собираем.',
       'Ваш ник, очки и процент угаданных прогнозов видны другим игрокам в рейтинге. Telegram-username не показывается.',
-      'Удалить данные можно в любой момент: Профиль → «Удалить мои данные».'),
+      'Удалить данные можно в любой момент: Профиль → «Удалить мои данные».',
+      'Если не заходить в приложение больше года, аккаунт удаляется автоматически.'),
     block('Связь', 'Вопросы и обращения: ' + CONTACT)
   );
 }

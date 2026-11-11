@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .config import INACTIVE_DELETE_DAYS
+from .config import INACTIVE_DELETE_DAYS, RETENTION_CHECK_SECONDS
 from .db import SessionLocal
 from .models import Prediction, Series, SeriesMatch, User
 
@@ -33,7 +33,7 @@ def purge_inactive(db: Session, days: int = INACTIVE_DELETE_DAYS) -> int:
     return len(old)
 
 
-async def retention_loop(every_seconds: int = 24 * 3600):
+async def retention_loop(every_seconds: int = RETENTION_CHECK_SECONDS):
     """Раз в сутки удаляет давно неактивные профили (первый раз сразу при запуске)."""
     while True:
         try:
@@ -42,8 +42,7 @@ async def retention_loop(every_seconds: int = 24 * 3600):
                 n = purge_inactive(db)
             finally:
                 db.close()
-            if n:
-                log.warning("Удалено неактивных профилей: %s", n)
+            print(f"[очистка] проверка неактивных профилей: удалено {n}", flush=True)
         except Exception:
             log.exception("Ошибка очистки неактивных профилей")
         await asyncio.sleep(every_seconds)
