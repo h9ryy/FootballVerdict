@@ -432,16 +432,38 @@ function matchCard(m, exact, onRemoved) {
 
 const rating = safe(async () => {
   setTab('rating');
-  const rows = await api('/leaderboard');
+  const d = await api('/leaderboard');
+  const mine = d.me;
+  const inTop = d.rows.some(r => r.me);
+
+  let mineCard;
+  if (mine.place) {
+    mineCard = h('div', { class: 'card' },
+      h('div', { class: 'dim' }, 'Твоё место'),
+      h('div', { class: 'stat' }, `#${mine.place}`),
+      h('div', { class: 'dim' }, `${mine.points} очков · ${mine.winrate}%`));
+  } else {
+    const left = Math.max(d.min_games - mine.total, 0);
+    mineCard = h('div', { class: 'card' },
+      h('div', { class: 'dim' }, `Чтобы попасть в рейтинг, нужно ${d.min_games}+ прогнозов с итогом. Тебе осталось: ${left}.`));
+  }
+
+  const list = d.rows.map(r => h('div', { class: 'rank' },
+    h('span', { style: r.me ? 'font-weight:800;color:var(--neon)' : null }, `${r.place}. ${r.nickname}`),
+    h('span', {}, `${r.points} · ${r.winrate}%`)));
+  // если игрок ниже топ-50, показываем его строку в конце
+  if (mine.place && !inTop) {
+    list.push(h('div', { class: 'rank' },
+      h('span', { style: 'font-weight:800;color:var(--neon)' }, `${mine.place}. ты`),
+      h('span', {}, `${mine.points} · ${mine.winrate}%`)));
+  }
+
   show(
     h('h1', {}, 'Рейтинг'),
-    h('p', { class: 'dim' }, 'В рейтинге игроки с 20+ прогнозами.'),
+    h('p', { class: 'dim' }, `В рейтинге игроки с ${d.min_games}+ прогнозами. При равных очках выше тот, у кого больше процент угаданных.`),
+    mineCard,
     h('div', { class: 'card' },
-      rows.length
-        ? rows.map((r, i) => h('div', { class: 'rank' },
-            h('span', {}, `${i + 1}. ${r.nickname}`),
-            h('span', {}, `${r.points} · ${r.winrate}%`)))
-        : h('span', { class: 'dim' }, 'Пока никто не набрал нужное число прогнозов.'))
+      list.length ? list : h('span', { class: 'dim' }, 'Пока никто не набрал нужное число прогнозов.'))
   );
 });
 

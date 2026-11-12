@@ -1,5 +1,5 @@
 import asyncio, re
-from .config import LEAGUES, APP_NAME
+from .config import LEAGUES, APP_NAME, LEADERBOARD_MIN_GAMES
 from .auth import current_user, identity
 from .retention import delete_user_data, retention_loop
 from contextlib import asynccontextmanager
@@ -307,12 +307,20 @@ def create_series(body: SeriesIn, u: User = Depends(current_user), db: Session =
 
 
 @app.get("/api/leaderboard")
-def leaderboard(min_games: int = 20, db: Session = Depends(get_db), u: User = Depends(current_user)):
-    """Только игроки с минимумом прогнозов, иначе лидер — «1 из 1»."""
-    rows = (db.query(User).filter(User.nickname.isnot(None), User.total >= max(min_games, 0))
-            .order_by(User.points.desc()).limit(50).all())
-    return [{"nickname": r.nickname, "points": r.points,
-             "winrate": round(r.correct / r.total * 100) if r.total else 0} for r in rows]
+def leaderboard(db: Session = Depends(get_db), u: User = Depends(current_user)):
+    """Рейтинг за всё время. В него попадают игроки с минимумом прогнозов с итогом."""
+    def wr(r: User) -> int:
+        return round(r.correct / r.total * 100) if r.total else 0
+
+    players = (db.query(User)
+               .filter(User.nickname.isnot(None), User.total >= LEADERBOARD_MIN_GAMES).all())
+    # при равных очках выше тот, у кого больше процент угаданных; затем по id
+    players.sort(key=lambda r: (-r.points, -(r.correct / r.total if r.total else 0), r.id))
+    rows = [{"place": i + 1, "nickname": r.nickname, "points": r.points,
+             "winrate": wr(r), "me": r.id == u.id} for i, r in enumerate(players[:50])]
+    place = next((i + 1 for i, r in enumerate(players) if r.id == u.id), None)
+    return {"min_games": LEADERBOARD_MIN_GAMES, "rows": rows,
+            "me": {"place": place, "points": u.points, "winrate": wr(u), "total": u.total}}
 
 
 # фронтенд отдаётся этим же сервером (должен быть В КОНЦЕ файла)
