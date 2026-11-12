@@ -232,3 +232,8 @@ label.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; m
 a { color: var(--neon); }
 .chk span { line-height: 1.4; }
 .teams2 .lg { font-size: 11px; font-weight: 600; color: var(--text-dim); }
+
+/* избранное */
+.trow { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; margin-bottom: 8px; }
+.star { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--text-dim); cursor: pointer; padding: 0 4px; }
+.star.on { color: var(--amber); text-shadow: 0 0 8px rgba(251, 191, 36, 0.5); }

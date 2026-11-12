@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import Base, engine, get_db
-from .models import User, Match, Prediction, Series, SeriesMatch
+from .models import User, Match, Prediction, Series, SeriesMatch, Favorite
 from .sync import sync_loop
 from .bot import run_bot
 from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS)
@@ -322,6 +322,79 @@ def leaderboard(db: Session = Depends(get_db), u: User = Depends(current_user)):
     return {"min_games": LEADERBOARD_MIN_GAMES, "rows": rows,
             "me": {"place": place, "points": u.points, "winrate": wr(u), "total": u.total}}
 
+
+MAX_FAVORITES = 30
+
+
+def match_dict(m: Match, preds: dict, in_series: set) -> dict:
+    p = preds.get(m.id)
+    return {"id": m.id, "home": m.home, "away": m.away, "kickoff": aware(m.kickoff_at).isoformat(),
+            "league": LEAGUES.get(m.league, m.league),
+            "locked": is_locked(m), "status": m.status, "result": m.result,
+            "home_goals": m.home_goals, "away_goals": m.away_goals,
+            "pick": p.pick if p else None,
+            "my_home": p.pred_home if p else None,
+            "my_away": p.pred_away if p else None,
+            "in_series": m.id in in_series}
+
+
+@app.get("/api/teams")
+def teams(db: Session = Depends(get_db), u: User = Depends(current_user)):
+    """Все команды из загруженных матчей: для выбора избранных."""
+    favs = {f.team for f in db.query(Favorite).filter_by(user_id=u.id).all()}
+    found: dict[str, str] = {}
+    for col in (Match.home, Match.away):
+        for name, league in db.query(col, Match.league).distinct():
+            if name not in found or found[name] == "CL":   # приоритет: национальная лига
+                found[name] = league
+    order = list(LEAGUES)
+    out = [{"name": n, "league": LEAGUES.get(l, l), "fav": n in favs}
+           for n, l in sorted(found.items(), key=lambda kv: (order.index(kv[1]) if kv[1] in order else 99, kv[0]))]
+    return out
+
+
+class FavIn(BaseModel):
+    team: str
+
+
+@app.post("/api/favorites")
+def add_favorite(body: FavIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    team = body.team.strip()
+    if not db.query(Match.id).filter((Match.home == team) | (Match.away == team)).first():
+        raise HTTPException(404, "Команда не найдена")
+    if db.query(Favorite).filter_by(user_id=u.id, team=team).first():
+        return {"ok": True}
+    if db.query(Favorite).filter_by(user_id=u.id).count() >= MAX_FAVORITES:
+        raise HTTPException(409, f"Можно добавить не больше {MAX_FAVORITES} команд")
+    db.add(Favorite(user_id=u.id, team=team))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+    return {"ok": True}
+
+
+@app.delete("/api/favorites")
+def remove_favorite(team: str, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    db.query(Favorite).filter_by(user_id=u.id, team=team).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/favorites/matches")
+def favorite_matches(db: Session = Depends(get_db), u: User = Depends(current_user)):
+    """Ближайшие матчи избранных команд."""
+    teams_ = [f.team for f in db.query(Favorite).filter_by(user_id=u.id).all()]
+    if not teams_:
+        return {"teams": [], "matches": [], "exact_bonus": EXACT_BONUS}
+    now = datetime.now(timezone.utc)
+    rows = (db.query(Match)
+            .filter(Match.kickoff_at > now, (Match.home.in_(teams_)) | (Match.away.in_(teams_)))
+            .order_by(Match.kickoff_at).limit(40).all())
+    preds = {p.match_id: p for p in db.query(Prediction).filter_by(user_id=u.id).all()}
+    in_series = series_match_ids(db, u.id)
+    return {"teams": teams_, "exact_bonus": EXACT_BONUS,
+            "matches": [match_dict(m, preds, in_series) for m in rows]}
 
 # фронтенд отдаётся этим же сервером (должен быть В КОНЦЕ файла)
 FRONT = Path(__file__).resolve().parents[2] / "frontend"

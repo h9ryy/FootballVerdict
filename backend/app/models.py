@@ -85,3 +85,11 @@ class SeriesMatch(Base):
     series: Mapped[Series] = relationship(back_populates="items")
     match: Mapped[Match] = relationship()
     __table_args__ = (UniqueConstraint("series_id", "match_id"),)
+    
+class Favorite(Base):
+    """Избранная команда игрока (по названию, как оно приходит из football-data.org)."""
+    __tablename__ = "favorites"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    team: Mapped[str] = mapped_column(String(64))
+    __table_args__ = (UniqueConstraint("user_id", "team"),)

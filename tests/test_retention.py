@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.db import Base
-from backend.app.models import User, Match, Prediction, Series, SeriesMatch
+from backend.app.models import User, Match, Prediction, Series, SeriesMatch, Favorite
 from backend.app.retention import delete_user_data, purge_inactive
 
 
@@ -41,6 +41,7 @@ def add_data(db, u):
     db.add(s)
     db.flush()
     db.add(SeriesMatch(series_id=s.id, match_id=m.id))
+    db.add(Favorite(user_id=u.id, team="A"))
     db.commit()
 
 
@@ -75,3 +76,4 @@ def test_delete_user_data_removes_everything(db):
     assert db.query(User).count() == 0
     assert db.query(Prediction).filter_by(user_id=uid).count() == 0
     assert db.query(Series).count() == 0 and db.query(SeriesMatch).count() == 0
+    assert db.query(Favorite).count() == 0

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .config import INACTIVE_DELETE_DAYS, RETENTION_CHECK_SECONDS
 from .db import SessionLocal
-from .models import Prediction, Series, SeriesMatch, User
+from .models import Favorite, Prediction, Series, SeriesMatch, User
 
 log = logging.getLogger("retention")
 
@@ -19,6 +19,7 @@ def delete_user_data(db: Session, user: User) -> None:
         db.query(SeriesMatch).filter(SeriesMatch.series_id.in_(sids)).delete(synchronize_session=False)
         db.query(Series).filter(Series.id.in_(sids)).delete(synchronize_session=False)
     db.query(Prediction).filter_by(user_id=user.id).delete()
+    db.query(Favorite).filter_by(user_id=user.id).delete()
     db.delete(user)
     db.commit()
 

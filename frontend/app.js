@@ -428,6 +428,76 @@ function matchCard(m, exact, onRemoved) {
     scoreBox);
 }
 
+/* ---------- избранное ---------- */
+
+const favs = safe(async () => {
+  setTab('favs');
+  const d = await api('/favorites/matches');
+  const items = [];
+  let lastDay = '';
+  d.matches.forEach(m => {
+    const label = dayLabel(new Date(m.kickoff));
+    if (label !== lastDay) { items.push(h('div', { class: 'day' }, label)); lastDay = label; }
+    items.push(matchCard(m, d.exact_bonus));
+  });
+  show(
+    h('h1', {}, 'Избранное'),
+    h('button', { class: 'btn gap', onclick: teamPicker },
+      d.teams.length ? `Мои команды (${d.teams.length}): изменить` : 'Выбрать команды'),
+    d.teams.length
+      ? [h('p', { class: 'dim' }, d.teams.map(shortName).join(', ')),
+         items.length ? items : h('p', { class: 'dim center' }, 'У твоих команд пока нет ближайших матчей.')]
+      : h('p', { class: 'dim center' }, 'Добавь команды, и здесь появятся их ближайшие матчи.')
+  );
+});
+
+const teamPicker = safe(async () => {
+  setTab('favs');
+  const all = await api('/teams');
+  const search = h('input', { type: 'text', placeholder: 'Поиск команды' });
+  const box = h('div', {});
+
+  function teamRow(t) {
+    const star = h('button', { class: 'star' + (t.fav ? ' on' : '') }, t.fav ? '★' : '☆');
+    star.addEventListener('click', async () => {
+      try {
+        if (t.fav) await api('/favorites?team=' + encodeURIComponent(t.name), { method: 'DELETE' });
+        else await api('/favorites', { method: 'POST', body: JSON.stringify({ team: t.name }) });
+        t.fav = !t.fav;
+        star.className = 'star' + (t.fav ? ' on' : '');
+        star.textContent = t.fav ? '★' : '☆';
+      } catch (e) { alert(e.message); }
+    });
+    return h('div', { class: 'card trow' }, h('span', { class: 'teams' }, shortName(t.name)), star);
+  }
+
+  function paintList() {
+    const q = search.value.trim().toLowerCase();
+    const groups = new Map();
+    all.filter(t => !q || t.name.toLowerCase().includes(q) || shortName(t.name).toLowerCase().includes(q))
+       .forEach(t => {
+         if (!groups.has(t.league)) groups.set(t.league, []);
+         groups.get(t.league).push(t);
+       });
+    const nodes = [];
+    groups.forEach((teams, league) => {
+      nodes.push(h('div', { class: 'day' }, league));
+      teams.sort((a, b) => shortName(a.name).localeCompare(shortName(b.name)))
+           .forEach(t => nodes.push(teamRow(t)));
+    });
+    box.replaceChildren(...(nodes.length ? nodes : [h('p', { class: 'dim center' }, 'Ничего не найдено')]));
+  }
+  search.addEventListener('input', paintList);
+  paintList();
+
+  show(
+    h('button', { class: 'back', onclick: favs }, '← Избранное'),
+    h('h1', {}, 'Выбор команд'),
+    search,
+    box
+  );
+});
+
 /* ---------- рейтинг ---------- */
 
 const rating = safe(async () => {
@@ -619,7 +689,7 @@ function about() {
       'Данные о матчах и результатах предоставлены Football-Data.org (football-data.org). Они могут приходить с задержкой или содержать неточности и носят информационный характер.',
       'Названия клубов и турниров принадлежат их правообладателям. Проект с ними не связан и ими не одобрен.'),
     block('Ваши данные',
-      'Мы храним только ваш ID в Telegram, придуманный ник, прогнозы, очки и статистику. Имя, телефон, почту и фото мы не собираем.',
+      'Мы храним только ваш ID в Telegram, придуманный ник, прогнозы, очки, статистику и список избранных команд. Имя, телефон, почту и фото мы не собираем.',
       'Ваш ник, очки и процент угаданных прогнозов видны другим игрокам в рейтинге. Telegram-username не показывается.',
       'Удалить данные можно в любой момент: Профиль → «Удалить мои данные».',
       'Если не заходить в приложение больше года, аккаунт удаляется автоматически.'),
@@ -631,7 +701,7 @@ function about() {
 
 function go(tab) {
   if (!me || !me.registered) return onboarding();
-  ({ home, rating, history: historyTab, profile })[tab]();
+    ({ home, rating, history: historyTab, profile, favs })[tab]();
 }
 
 document.querySelectorAll('#nav button, #profileBtn').forEach(b =>
