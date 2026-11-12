@@ -15,6 +15,7 @@ from .db import Base, engine, get_db
 from .models import User, Match, Prediction, Series, SeriesMatch, Favorite
 from .sync import sync_loop
 from .bot import run_bot
+from .ranks import rank_info
 from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS)
 
 NICK_RE = re.compile(r"^[A-Za-zА-Яа-яЁё0-9_]{3,16}$")
@@ -63,7 +64,7 @@ def me_dict(u: User) -> dict:
     wr = round(u.correct / u.total * 100) if u.total else 0
     return {"nickname": u.nickname, "adult": bool(u.adult_confirmed_at), "points": u.points,
             "total": u.total, "correct": u.correct, "winrate": wr,
-            "streak": u.streak, "best_streak": u.best_streak}
+            "streak": u.streak, "best_streak": u.best_streak, "rank": rank_info(u.points)}
 
 
 @app.get("/api/config")

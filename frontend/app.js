@@ -669,6 +669,35 @@ const historyTab = safe(async () => {
   );
 });
 
+/* ---------- звания и значки (рисуем сами, из простых фигур) ---------- */
+
+const BADGES = {
+  debut: '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16" fill="#3a3a46" stroke="#9a9aa8" stroke-width="2"/><path d="M16 24h16" stroke="#ececf2" stroke-width="3" stroke-linecap="round"/></svg>',
+  znatok: '<svg viewBox="0 0 48 48"><path d="M24 6l14 5v11c0 9-6 15-14 20C16 37 10 31 10 22V11z" fill="#1e3a5f" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round"/><polygon points="24,15 26.2,20 31.5,20.4 27.4,23.9 28.8,29 24,26.2 19.2,29 20.6,23.9 16.5,20.4 21.8,20" fill="#93c5fd"/></svg>',
+  analitik: '<svg viewBox="0 0 48 48"><path d="M24 5l16 19-16 19L8 24z" fill="#3b1d63" stroke="#a855f7" stroke-width="2" stroke-linejoin="round"/><path d="M24 14l8 10-8 10-8-10z" fill="#a855f7" fill-opacity=".55"/><path d="M8 24h32" stroke="#a855f7" stroke-width="1.5"/></svg>',
+  strateg: '<svg viewBox="0 0 48 48"><polygon points="24,4 41,14 41,34 24,44 7,34 7,14" fill="#4a3a10" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round"/><path d="M15 31l-1-11 6 5 4-9 4 9 6-5-1 11z" fill="#fbbf24"/></svg>',
+  oracle: '<svg viewBox="0 0 48 48"><path d="M24 2v5M24 41v5M2 24h5M41 24h5M8.5 8.5l3.5 3.5M39.5 8.5L36 12M8.5 39.5L12 36M39.5 39.5L36 36" stroke="#e0115f" stroke-width="2" stroke-linecap="round"/><polygon points="24,9 34,21 24,39 14,21" fill="#7a0a35" stroke="#e0115f" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="22" r="4" fill="#ffd1e0"/></svg>',
+};
+
+function badge(key, size = 40) {
+  const s = h('span', { class: 'badge' });
+  s.style.width = s.style.height = size + 'px';
+  s.innerHTML = BADGES[key] || '';   // строки выше написаны нами, пользовательских данных тут нет
+  return s;
+}
+
+function rankCard(r) {
+  const bar = h('div', { class: 'bar' }, h('div', {}));
+  bar.firstChild.style.width = r.progress + '%';
+  return h('div', { class: 'card rank-card' },
+    badge(r.key, 60),
+    h('div', { class: 'rinfo' },
+      h('div', { class: 'rname' }, r.name),
+      r.next
+        ? [bar, h('div', { class: 'dim' }, `До «${r.next}»: ещё ${r.to_next} очков`)]
+        : h('div', { class: 'dim' }, 'Высшее звание')));
+}
+
 /* ---------- профиль ---------- */
 
 const profile = safe(async () => {
@@ -677,6 +706,7 @@ const profile = safe(async () => {
   paintTop();
   show(
     h('h1', {}, me.nickname),
+    rankCard(me.rank),
     h('div', { class: 'card' },
       h('div', { class: 'dim' }, 'Очки'),
       h('div', { class: 'stat' }, String(me.points)),
@@ -727,6 +757,8 @@ function about() {
       'Редкий исход: чем меньше игроков выбрали тот же вариант, тем больше бонус (до +10). Он считается, когда на матч поставили 10 и более игроков.',
       'Стрик (верные прогнозы подряд): 3 — +5, 5 — +10, 10 — +25. За ошибку очки не отнимаются.',
       'Серия дня: выбери 3–5 матчей ближайших двух суток. Угаданы все: 3 матча +20, 4 матча +35, 5 матчей +60. После сбора прогнозы на эти матчи менять нельзя. Если угадан не каждый, бонуса нет, но обычные очки остаются.'),
+    block('Звания',
+      'Звание зависит от всех набранных очков и не падает: Дебютант (0), Знаток (300), Аналитик (1000), Стратег (2000), Оракул (4000).'),
     block('Только для совершеннолетних (18+)',
       'Сервис предназначен только для лиц, достигших 18 лет. Если вам нет 18, пожалуйста, не пользуйтесь приложением.'),
     block('Это не азартная игра и не ставки',

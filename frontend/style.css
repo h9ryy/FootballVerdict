@@ -237,3 +237,12 @@ a { color: var(--neon); }
 .trow { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; margin-bottom: 8px; }
 .star { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--text-dim); cursor: pointer; padding: 0 4px; }
 .star.on { color: var(--amber); text-shadow: 0 0 8px rgba(251, 191, 36, 0.5); }
+
+/* звания */
+.badge { display: inline-block; flex: none; }
+.badge svg { width: 100%; height: 100%; display: block; }
+.rank-card { display: flex; align-items: center; gap: 14px; }
+.rinfo { flex: 1; min-width: 0; }
+.rname { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+.bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-bottom: 6px; }
+.bar > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #8b3fe0, #b26bff); box-shadow: 0 0 8px var(--neon-soft); }
