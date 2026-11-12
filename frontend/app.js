@@ -451,6 +451,56 @@ const favs = safe(async () => {
   );
 });
 
+// поиск: без регистра, без «ё» и значков над буквами (Atlético = atletico)
+const norm = s => String(s).toLowerCase().replace(/ё/g, 'е').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+// названия лиг, как их отдаёт сервер, и то, что человек может ввести
+const LEAGUE_ALIASES = {
+  'Премьер-лига': ['премьер-лига', 'премьер лига', 'апл', 'англия', 'английская', 'premier league', 'epl', 'pl', 'england'],
+  'Ла Лига': ['ла лига', 'ла-лига', 'испания', 'испанская', 'la liga', 'laliga', 'spain'],
+  'Серия А': ['серия а', 'серия a', 'италия', 'итальянская', 'serie a', 'italy'],
+  'Бундеслига': ['бундеслига', 'германия', 'немецкая', 'bundesliga', 'germany'],
+  'Лига 1': ['лига 1', 'франция', 'французская', 'ligue 1', 'ligue1', 'france'],
+  'Лига чемпионов': ['лига чемпионов', 'лч', 'champions league', 'ucl', 'cl'],
+};
+
+// русские названия клубов: ключ = короткое имя, как оно показывается в списке
+const TEAM_RU = {
+  'Arsenal': 'Арсенал', 'Aston Villa': 'Астон Вилла', 'Bournemouth': 'Борнмут', 'Brentford': 'Брентфорд',
+  'Brighton': 'Брайтон', 'Burnley': 'Бернли', 'Chelsea': 'Челси', 'Crystal Palace': 'Кристал Пэлас',
+  'Everton': 'Эвертон', 'Fulham': 'Фулхэм', 'Leeds': 'Лидс', 'Liverpool': 'Ливерпуль',
+  'Man City': 'Манчестер Сити', 'Man United': 'Манчестер Юнайтед', 'Newcastle': 'Ньюкасл',
+  'Nottingham': 'Ноттингем Форест', 'Sunderland': 'Сандерленд', 'Tottenham': 'Тоттенхэм', 'West Ham': 'Вест Хэм',
+  'Wolves': 'Вулверхэмптон Вулвз',
+  'Real Madrid': 'Реал Мадрид', 'Barcelona': 'Барселона', 'Atlético': 'Атлетико Мадрид', 'Sevilla': 'Севилья',
+  'Valencia': 'Валенсия', 'Villarreal': 'Вильярреал', 'Betis': 'Бетис', 'Real Sociedad': 'Реал Сосьедад',
+  'Athletic Club': 'Атлетик Бильбао', 'Getafe': 'Хетафе', 'Girona': 'Жирона', 'Osasuna': 'Осасуна',
+  'Celta': 'Сельта', 'Mallorca': 'Мальорка', 'Rayo': 'Райо Вальекано', 'Espanyol': 'Эспаньол',
+  'Alavés': 'Алавес', 'Elche': 'Эльче', 'Levante': 'Леванте', 'Real Oviedo': 'Овьедо',
+  'Juventus': 'Ювентус', 'Inter': 'Интер', 'Milan': 'Милан', 'Napoli': 'Наполи', 'Roma': 'Рома',
+  'Lazio': 'Лацио', 'Atalanta': 'Аталанта', 'Fiorentina': 'Фиорентина', 'Bologna': 'Болонья',
+  'Torino': 'Торино', 'Genoa': 'Дженоа', 'Udinese': 'Удинезе', 'Sassuolo': 'Сассуоло', 'Parma': 'Парма',
+  'Cagliari': 'Кальяри', 'Lecce': 'Лечче', 'Verona': 'Верона', 'Como': 'Комо', 'Cremonese': 'Кремонезе', 'Pisa': 'Пиза',
+  'Bayern': 'Бавария', 'Dortmund': 'Боруссия Дортмунд', 'Leverkusen': 'Байер Леверкузен',
+  'RB Leipzig': 'РБ Лейпциг', 'Stuttgart': 'Штутгарт', 'Frankfurt': 'Айнтрахт Франкфурт',
+  'Wolfsburg': 'Вольфсбург', 'Freiburg': 'Фрайбург', 'Mainz': 'Майнц', 'Hoffenheim': 'Хоффенхайм',
+  'Union Berlin': 'Унион Берлин', 'Werder': 'Вердер Бремен', 'Augsburg': 'Аугсбург', 'Köln': 'Кёльн',
+  'St. Pauli': 'Санкт-Паули', "M'gladbach": 'Боруссия Мёнхенгладбах', 'Heidenheim': 'Хайденхайм', 'Hamburg': 'Гамбург',
+  'PSG': 'ПСЖ Пари Сен-Жермен', 'Marseille': 'Марсель', 'Lyon': 'Лион', 'Monaco': 'Монако', 'Lille': 'Лилль',
+  'Nice': 'Ницца', 'Lens': 'Ланс', 'Rennes': 'Ренн', 'Strasbourg': 'Страсбур', 'Nantes': 'Нант',
+  'Toulouse': 'Тулуза', 'Brest': 'Брест', 'Auxerre': 'Осер', 'Angers': 'Анже', 'Lorient': 'Лорьян',
+  'Metz': 'Метц', 'Paris': 'Пари', 'Le Havre': 'Гавр',
+  'Benfica': 'Бенфика', 'Sporting': 'Спортинг', 'Ajax': 'Аякс', 'Galatasaray': 'Галатасарай',
+  'Brugge': 'Брюгге', 'PSV': 'ПСВ Эйндховен', 'Celtic': 'Селтик', 'Porto': 'Порту',
+};
+
+function teamMatches(t, q) {
+  const hay = [t.name, shortName(t.name), TEAM_RU[shortName(t.name)] || ''].map(norm);
+  if (hay.some(x => x.includes(q))) return true;
+  const la = (LEAGUE_ALIASES[t.league] || [t.league]).map(norm);
+  return q.length >= 2 && la.some(a => a.includes(q));   // поиск по лиге: показать все её команды
+}
+
 const teamPicker = safe(async () => {
   setTab('favs');
   const all = await api('/teams');
@@ -472,9 +522,9 @@ const teamPicker = safe(async () => {
   }
 
   function paintList() {
-    const q = search.value.trim().toLowerCase();
+    const q = norm(search.value.trim());
     const groups = new Map();
-    all.filter(t => !q || t.name.toLowerCase().includes(q) || shortName(t.name).toLowerCase().includes(q))
+    all.filter(t => !q || teamMatches(t, q))
        .forEach(t => {
          if (!groups.has(t.league)) groups.set(t.league, []);
          groups.get(t.league).push(t);
