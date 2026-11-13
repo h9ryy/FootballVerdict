@@ -271,3 +271,15 @@ a { color: var(--neon); }
 #nav button[data-tab="favs"] .ico { color: var(--amber); }
 #nav button[data-tab="favs"]:not(.on) .ico { opacity: 0.8; }
 #nav button[data-tab="favs"].on .ico svg { filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6)); }
+
+/* избранное: команды с крестиком */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.tchip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px;
+  background: var(--surface); border: 1px solid #3a3a46; border-radius: 999px;
+  font-size: 14px; font-weight: 700;
+}
+.tchip button {
+  width: 22px; height: 22px; border-radius: 50%; border: 0; padding: 0;
+  background: var(--surface-2); color: var(--text-dim); font-size: 14px; line-height: 1; cursor: pointer;
+}

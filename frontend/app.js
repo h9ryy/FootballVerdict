@@ -433,6 +433,16 @@ function matchCard(m, exact, onRemoved) {
 const favs = safe(async () => {
   setTab('favs');
   const d = await api('/favorites/matches');
+
+  const chips = d.teams.map(name => h('span', { class: 'tchip' },
+    shortName(name),
+    h('button', { 'aria-label': 'Убрать ' + shortName(name), onclick: async () => {
+      try {
+        await api('/favorites?team=' + encodeURIComponent(name), { method: 'DELETE' });
+        favs();
+      } catch (e) { alert(e.message); }
+    } }, '×')));
+
   const items = [];
   let lastDay = '';
   d.matches.forEach(m => {
@@ -440,12 +450,14 @@ const favs = safe(async () => {
     if (label !== lastDay) { items.push(h('div', { class: 'day' }, label)); lastDay = label; }
     items.push(matchCard(m, d.exact_bonus));
   });
+
   show(
     h('h1', {}, 'Избранное'),
     h('button', { class: 'btn gap', onclick: teamPicker },
-      d.teams.length ? `Мои команды (${d.teams.length}): изменить` : 'Выбрать команды'),
+      d.teams.length ? 'Добавить команды' : 'Выбрать команды'),
     d.teams.length
-      ? [h('p', { class: 'dim' }, d.teams.map(shortName).join(', ')),
+      ? [h('div', { class: 'chips' }, chips),
+         h('p', { class: 'dim' }, 'Показываем ближайший матч каждой команды.'),
          items.length ? items : h('p', { class: 'dim center' }, 'У твоих команд пока нет ближайших матчей.')]
       : h('p', { class: 'dim center' }, 'Добавь команды, и здесь появятся их ближайшие матчи.')
   );

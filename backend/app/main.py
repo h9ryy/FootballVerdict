@@ -384,14 +384,19 @@ def remove_favorite(team: str, u: User = Depends(current_user), db: Session = De
 
 @app.get("/api/favorites/matches")
 def favorite_matches(db: Session = Depends(get_db), u: User = Depends(current_user)):
-    """Ближайшие матчи избранных команд."""
-    teams_ = [f.team for f in db.query(Favorite).filter_by(user_id=u.id).all()]
+    """Для каждой избранной команды: только ближайший матч."""
+    teams_ = sorted(f.team for f in db.query(Favorite).filter_by(user_id=u.id).all())
     if not teams_:
         return {"teams": [], "matches": [], "exact_bonus": EXACT_BONUS}
     now = datetime.now(timezone.utc)
-    rows = (db.query(Match)
-            .filter(Match.kickoff_at > now, (Match.home.in_(teams_)) | (Match.away.in_(teams_)))
-            .order_by(Match.kickoff_at).limit(40).all())
+    found: dict[int, Match] = {}
+    for t in teams_:
+        m = (db.query(Match)
+             .filter(Match.kickoff_at > now, (Match.home == t) | (Match.away == t))
+             .order_by(Match.kickoff_at).first())
+        if m:
+            found[m.id] = m          # один матч двух избранных команд показываем один раз
+    rows = sorted(found.values(), key=lambda m: aware(m.kickoff_at))
     preds = {p.match_id: p for p in db.query(Prediction).filter_by(user_id=u.id).all()}
     in_series = series_match_ids(db, u.id)
     return {"teams": teams_, "exact_bonus": EXACT_BONUS,
