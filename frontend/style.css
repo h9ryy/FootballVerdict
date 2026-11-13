@@ -283,3 +283,12 @@ a { color: var(--neon); }
   width: 22px; height: 22px; border-radius: 50%; border: 0; padding: 0;
   background: var(--surface-2); color: var(--text-dim); font-size: 14px; line-height: 1; cursor: pointer;
 }
+
+/* рейтинг: фильтры */
+.lgs { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0 12px; scrollbar-width: none; }
+.lgs::-webkit-scrollbar { display: none; }
+.lchip {
+  flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid #3a3a46;
+  background: var(--surface); color: var(--text-dim); font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.lchip.on { border-color: var(--neon); color: var(--text); background: rgba(168, 85, 247, 0.18); }

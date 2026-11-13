@@ -562,11 +562,25 @@ const teamPicker = safe(async () => {
 
 /* ---------- рейтинг ---------- */
 
+const ratingState = { period: 'all', league: '' };
+const PERIODS = [['week', 'Неделя'], ['month', 'Месяц'], ['all', 'Всё время']];
+
 const rating = safe(async () => {
   setTab('rating');
-  const d = await api('/leaderboard');
+  const qs = `?period=${ratingState.period}` + (ratingState.league ? `&league=${ratingState.league}` : '');
+  const d = await api('/leaderboard' + qs);
   const mine = d.me;
   const inTop = d.rows.some(r => r.me);
+
+  const seg = h('div', { class: 'seg' }, PERIODS.map(([k, name]) =>
+    h('button', { class: 'segb' + (ratingState.period === k ? ' on' : ''), onclick: () => {
+      ratingState.period = k; rating();
+    } }, name)));
+
+  const lgs = h('div', { class: 'lgs' }, [['', 'Все лиги'], ...d.leagues.map(l => [l.code, l.name])].map(([code, name]) =>
+    h('button', { class: 'lchip' + (ratingState.league === code ? ' on' : ''), onclick: () => {
+      ratingState.league = code; rating();
+    } }, name)));
 
   let mineCard;
   if (mine.place) {
@@ -577,25 +591,27 @@ const rating = safe(async () => {
   } else {
     const left = Math.max(d.min_games - mine.total, 0);
     mineCard = h('div', { class: 'card' },
-      h('div', { class: 'dim' }, `Чтобы попасть в рейтинг, нужно ${d.min_games}+ прогнозов с итогом. Тебе осталось: ${left}.`));
+      h('div', { class: 'dim' }, `Чтобы попасть сюда, нужно ${d.min_games}+ прогнозов с итогом. Тебе осталось: ${left}.`));
   }
 
   const list = d.rows.map(r => h('div', { class: 'rank' },
     h('span', { style: r.me ? 'font-weight:800;color:var(--neon)' : null }, `${r.place}. ${r.nickname}`),
     h('span', {}, `${r.points} · ${r.winrate}%`)));
-  // если игрок ниже топ-50, показываем его строку в конце
   if (mine.place && !inTop) {
     list.push(h('div', { class: 'rank' },
       h('span', { style: 'font-weight:800;color:var(--neon)' }, `${mine.place}. ты`),
       h('span', {}, `${mine.points} · ${mine.winrate}%`)));
   }
 
+  const filtered = d.period !== 'all' || d.league;
   show(
     h('h1', {}, 'Рейтинг'),
-    h('p', { class: 'dim' }, `В рейтинге игроки с ${d.min_games}+ прогнозами. При равных очках выше тот, у кого больше процент угаданных.`),
+    seg,
+    lgs,
+    h('p', { class: 'dim' }, `В рейтинге игроки с ${d.min_games}+ прогнозами. При равных очках выше тот, у кого больше процент угаданных.`
+      + (filtered ? ' Здесь считаются очки за прогнозы; бонус серии дня учитывается только в общем рейтинге за всё время.' : '')),
     mineCard,
-    h('div', { class: 'card' },
-      list.length ? list : h('span', { class: 'dim' }, 'Пока никто не набрал нужное число прогнозов.'))
+    list.length ? h('div', { class: 'card' }, list) : ''
   );
 });
 
@@ -826,7 +842,8 @@ function about() {
       'Точный счёт (по желанию, за 90 минут): ещё +15.',
       'Редкий исход: чем меньше игроков выбрали тот же вариант, тем больше бонус (до +10). Он считается, когда на матч поставили 10 и более игроков.',
       'Стрик (верные прогнозы подряд): 3 — +5, 5 — +10, 10 — +25. За ошибку очки не отнимаются.',
-      'Серия дня: выбери 3–5 матчей ближайших двух суток. Угаданы все: 3 матча +20, 4 матча +35, 5 матчей +60. После сбора прогнозы на эти матчи менять нельзя. Если угадан не каждый, бонуса нет, но обычные очки остаются.'),
+      'Серия дня: выбери 3–5 матчей ближайших двух суток. Угаданы все: 3 матча +20, 4 матча +35, 5 матчей +60. После сбора прогнозы на эти матчи менять нельзя. Если угадан не каждый, бонуса нет, но обычные очки остаются.',
+      'Рейтинг можно смотреть за неделю, месяц и всё время, а также по каждой лиге. В рейтингах за период считаются очки за прогнозы, бонус серии дня входит только в общий рейтинг.'),
     block('Звания',
       'Звание зависит от всех набранных очков и не падает: Дебютант (0), Знаток (300), Аналитик (1000), Стратег (2000), Оракул (4000).'),
     block('Только для совершеннолетних (18+)',
@@ -848,6 +865,7 @@ function about() {
     block('Связь', 'Вопросы и обращения: ' + CONTACT)
   );
 }
+
 
 /* ---------- запуск ---------- */
 

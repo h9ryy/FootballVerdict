@@ -1,5 +1,5 @@
 import asyncio, re
-from .config import LEAGUES, APP_NAME, LEADERBOARD_MIN_GAMES
+from .config import LEAGUES, APP_NAME, LEADERBOARD_MIN_GAMES, PERIOD_MIN_GAMES
 from .auth import current_user, identity
 from .retention import delete_user_data, retention_loop
 from contextlib import asynccontextmanager
@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import Base, engine, get_db
@@ -307,21 +307,67 @@ def create_series(body: SeriesIn, u: User = Depends(current_user), db: Session =
     return {"ok": True}
 
 
-@app.get("/api/leaderboard")
-def leaderboard(db: Session = Depends(get_db), u: User = Depends(current_user)):
-    """Рейтинг за всё время. В него попадают игроки с минимумом прогнозов с итогом."""
-    def wr(r: User) -> int:
-        return round(r.correct / r.total * 100) if r.total else 0
+PERIOD_DAYS = {"week": 7, "month": 30}
 
-    players = (db.query(User)
-               .filter(User.nickname.isnot(None), User.total >= LEADERBOARD_MIN_GAMES).all())
+
+@app.get("/api/leaderboard")
+def leaderboard(period: str = "all", league: str = "",
+                db: Session = Depends(get_db), u: User = Depends(current_user)):
+    """Рейтинг: за неделю, месяц или всё время; можно по одной лиге."""
+    if period not in ("week", "month", "all"):
+        raise HTTPException(400, "Неверный период")
+    if league and league not in LEAGUES:
+        raise HTTPException(400, "Неверная лига")
+
+    def wr(correct: int, total: int) -> int:
+        return round(correct / total * 100) if total else 0
+
+    if period == "all" and not league:
+        # общий рейтинг: очки, итоги и серии дня уже посчитаны в профиле игрока
+        min_games = LEADERBOARD_MIN_GAMES
+        entries = [(p, p.points, p.total, p.correct) for p in
+                   db.query(User).filter(User.nickname.isnot(None), User.total >= min_games).all()]
+    else:
+        # за период или по лиге: считаем из прогнозов на сыгранные матчи (без бонуса серий)
+        min_games = PERIOD_MIN_GAMES
+        q = (db.query(Prediction.user_id,
+                      func.coalesce(func.sum(Prediction.points_awarded), 0),
+                      func.count(Prediction.id),
+                      func.sum(case((Prediction.pick == Match.result, 1), else_=0)))
+             .join(Match, Match.id == Prediction.match_id)
+             .filter(Match.settled.is_(True), Match.result.isnot(None)))
+        if period in PERIOD_DAYS:
+            q = q.filter(Match.kickoff_at >= datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS[period]))
+        if league:
+            q = q.filter(Match.league == league)
+        stats = {uid: (int(pts), int(n), int(ok or 0)) for uid, pts, n, ok in q.group_by(Prediction.user_id).all()}
+        users = {p.id: p for p in db.query(User).filter(User.id.in_(list(stats)), User.nickname.isnot(None)).all()} if stats else {}
+        entries = [(users[uid], pts, n, ok) for uid, (pts, n, ok) in stats.items()
+                   if uid in users and n >= min_games]
+
     # при равных очках выше тот, у кого больше процент угаданных; затем по id
-    players.sort(key=lambda r: (-r.points, -(r.correct / r.total if r.total else 0), r.id))
-    rows = [{"place": i + 1, "nickname": r.nickname, "points": r.points,
-             "winrate": wr(r), "me": r.id == u.id} for i, r in enumerate(players[:50])]
-    place = next((i + 1 for i, r in enumerate(players) if r.id == u.id), None)
-    return {"min_games": LEADERBOARD_MIN_GAMES, "rows": rows,
-            "me": {"place": place, "points": u.points, "winrate": wr(u), "total": u.total}}
+    entries.sort(key=lambda e: (-e[1], -(e[3] / e[2] if e[2] else 0), e[0].id))
+    rows = [{"place": i + 1, "nickname": p.nickname, "points": pts,
+             "winrate": wr(ok, n), "me": p.id == u.id}
+            for i, (p, pts, n, ok) in enumerate(entries[:50])]
+    mine = next(((i + 1, pts, n, ok) for i, (p, pts, n, ok) in enumerate(entries) if p.id == u.id), None)
+    if mine:
+        me = {"place": mine[0], "points": mine[1], "winrate": wr(mine[3], mine[2]), "total": mine[2]}
+    else:
+        # игрока нет в списке: считаем, сколько прогнозов у него в этом режиме
+        if period == "all" and not league:
+            own = u.total
+        else:
+            qq = (db.query(func.count(Prediction.id)).join(Match, Match.id == Prediction.match_id)
+                  .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None)))
+            if period in PERIOD_DAYS:
+                qq = qq.filter(Match.kickoff_at >= datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS[period]))
+            if league:
+                qq = qq.filter(Match.league == league)
+            own = qq.scalar() or 0
+        me = {"place": None, "points": 0, "winrate": 0, "total": own}
+    return {"min_games": min_games, "period": period, "league": league, "rows": rows, "me": me,
+            "leagues": [{"code": c, "name": n} for c, n in LEAGUES.items()]}
 
 
 MAX_FAVORITES = 30
