@@ -146,16 +146,18 @@ label.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; m
   font-size: 11px; font-weight: 600; color: var(--text-dim); cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
+#nav .ico {
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+}
 #nav .ico svg {
-  width: 22px; height: 22px; display: block; fill: none; stroke: currentColor;
+  width: 24px; height: 24px; display: block; fill: none; stroke: currentColor;
   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
-#nav button.home .ico svg { width: 24px; height: 24px; }
 #nav button.on { color: var(--neon); }
 #nav button.on .ico svg { filter: drop-shadow(0 0 5px var(--neon-soft)); }
-#nav button[data-tab="rating"] .ico { color: var(--ruby); }
+#nav button[data-tab="rating"] .ico { color: var(--amber); }
 #nav button[data-tab="rating"]:not(.on) .ico { opacity: 0.8; }
-#nav button[data-tab="rating"].on .ico svg { filter: drop-shadow(0 0 6px rgba(224, 17, 95, 0.6)); }
+#nav button[data-tab="rating"].on .ico svg { filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6)); }
 
 /* точный счёт */
 .scorebox { margin-top: 10px; }
