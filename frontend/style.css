@@ -285,8 +285,12 @@ a { color: var(--neon); }
 }
 
 /* рейтинг: фильтры */
-.lgs { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0 12px; scrollbar-width: none; }
+.lgs {
+  display: flex; gap: 6px; overflow-x: auto; margin: 10px 0 12px; scrollbar-width: none;
+  touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; cursor: grab;
+}
 .lgs::-webkit-scrollbar { display: none; }
+.lgs.drag { cursor: grabbing; user-select: none; }
 .lchip {
   flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid #3a3a46;
   background: var(--surface); color: var(--text-dim); font-size: 13px; font-weight: 700; cursor: pointer;

@@ -560,7 +560,25 @@ const teamPicker = safe(async () => {
   );
 });
 
-/* ---------- рейтинг ---------- */
+// горизонтальная строка: тянется мышью, листается колесом (на телефоне работает обычный свайп)
+function dragScroll(el) {
+  let down = false, moved = false, startX = 0, startLeft = 0;
+  el.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') return;      // пальцем браузер листает сам
+    down = true; moved = false; startX = e.clientX; startLeft = el.scrollLeft;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!down) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 5) { moved = true; el.classList.add('drag'); }
+    if (moved) el.scrollLeft = startLeft - dx;
+  });
+  window.addEventListener('pointerup', () => { down = false; el.classList.remove('drag'); });
+  el.addEventListener('click', e => { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
+  el.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); }
+  }, { passive: false });
+}
 
 const ratingState = { period: 'all', league: '' };
 const PERIODS = [['week', 'Неделя'], ['month', 'Месяц'], ['all', 'Всё время']];
@@ -581,6 +599,7 @@ const rating = safe(async () => {
     h('button', { class: 'lchip' + (ratingState.league === code ? ' on' : ''), onclick: () => {
       ratingState.league = code; rating();
     } }, name)));
+  dragScroll(lgs);
 
   let mineCard;
   if (mine.place) {
@@ -613,6 +632,9 @@ const rating = safe(async () => {
     mineCard,
     list.length ? h('div', { class: 'card' }, list) : ''
   );
+
+  const active = lgs.querySelector('.on');
+  if (active) lgs.scrollLeft = active.offsetLeft - 12;   // выбранная лига остаётся на виду
 });
 
 /* ---------- история ---------- */
