@@ -264,3 +264,8 @@ a { color: var(--neon); }
 .dots { display: flex; gap: 8px; align-items: center; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-2); border: 0; padding: 0; cursor: pointer; }
 .dot.on { background: var(--neon); box-shadow: 0 0 8px var(--neon-soft); }
+
+/* значок «Избранное»: жёлтая звезда */
+#nav button[data-tab="favs"] .ico { color: var(--amber); }
+#nav button[data-tab="favs"]:not(.on) .ico { opacity: 0.8; }
+#nav button[data-tab="favs"].on .ico svg { filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6)); }
