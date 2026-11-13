@@ -15,7 +15,7 @@ from .db import Base, engine, get_db
 from .models import User, Match, Prediction, Series, SeriesMatch, Favorite
 from .sync import sync_loop
 from .bot import run_bot
-from .ranks import rank_info
+from .ranks import rank_info, RANKS
 from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS)
 
 NICK_RE = re.compile(r"^[A-Za-zА-Яа-яЁё0-9_]{3,16}$")
@@ -396,6 +396,11 @@ def favorite_matches(db: Session = Depends(get_db), u: User = Depends(current_us
     in_series = series_match_ids(db, u.id)
     return {"teams": teams_, "exact_bonus": EXACT_BONUS,
             "matches": [match_dict(m, preds, in_series) for m in rows]}
+    
+@app.get("/api/ranks")
+def ranks_list(u: User = Depends(current_user)):
+    return {"points": u.points,
+            "ranks": [{"key": k, "name": n, "need": need} for need, k, n in RANKS]}
 
 # фронтенд отдаётся этим же сервером (должен быть В КОНЦЕ файла)
 FRONT = Path(__file__).resolve().parents[2] / "frontend"

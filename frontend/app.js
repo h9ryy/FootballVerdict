@@ -672,9 +672,8 @@ const historyTab = safe(async () => {
 /* ---------- звания и значки (рисуем сами, из простых фигур) ---------- */
 
 const BADGES = {
-  debut: '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="16" fill="#3a3a46" stroke="#9a9aa8" stroke-width="2"/><path d="M16 24h16" stroke="#ececf2" stroke-width="3" stroke-linecap="round"/></svg>',
-  znatok: '<svg viewBox="0 0 48 48"><path d="M24 6l14 5v11c0 9-6 15-14 20C16 37 10 31 10 22V11z" fill="#1e3a5f" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round"/><polygon points="24,15 26.2,20 31.5,20.4 27.4,23.9 28.8,29 24,26.2 19.2,29 20.6,23.9 16.5,20.4 21.8,20" fill="#93c5fd"/></svg>',
-  analitik: '<svg viewBox="0 0 48 48"><path d="M24 5l16 19-16 19L8 24z" fill="#3b1d63" stroke="#a855f7" stroke-width="2" stroke-linejoin="round"/><path d="M24 14l8 10-8 10-8-10z" fill="#a855f7" fill-opacity=".55"/><path d="M8 24h32" stroke="#a855f7" stroke-width="1.5"/></svg>',
+  debut: '<svg viewBox="0 0 48 48"><defs><linearGradient id="gdb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a4a58"/><stop offset="1" stop-color="#2c2c36"/></linearGradient></defs><circle cx="24" cy="24" r="19" fill="none" stroke="#6b6b7b" stroke-width="1.5" stroke-dasharray="3 3"/><circle cx="24" cy="24" r="15" fill="url(#gdb)" stroke="#b4b4c2" stroke-width="2"/><path d="M17 27l7-7 7 7" fill="none" stroke="#ececf2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 33h14" stroke="#9a9aa8" stroke-width="2.5" stroke-linecap="round"/></svg>',
+  znatok: '<svg viewBox="0 0 48 48"><defs><linearGradient id="gzn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b5a96"/><stop offset="1" stop-color="#16294a"/></linearGradient></defs><path d="M24 5l15 5.5v11.5c0 9.5-6.5 16-15 21C15.500 38 9 31.500 9 22V10.500z" fill="url(#gzn)" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round"/><path d="M24 9.500l11 4v8.500c0 7-4.500 12-11 16-6.500-4-11-9-11-16v-8.500z" fill="none" stroke="#93c5fd" stroke-opacity=".5" stroke-width="1"/><polygon points="24,14 26.2,19 31.500,19.400 27.400,22.900 28.800,28 24,25.200 19.200,28 20.600,22.900 16.500,19.400 21.800,19" fill="#bfdbfe"/><path d="M19 32l5 3 5-3" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',analitik: '<svg viewBox="0 0 48 48"><path d="M24 5l16 19-16 19L8 24z" fill="#3b1d63" stroke="#a855f7" stroke-width="2" stroke-linejoin="round"/><path d="M24 14l8 10-8 10-8-10z" fill="#a855f7" fill-opacity=".55"/><path d="M8 24h32" stroke="#a855f7" stroke-width="1.5"/></svg>',
   strateg: '<svg viewBox="0 0 48 48"><polygon points="24,4 41,14 41,34 24,44 7,34 7,14" fill="#4a3a10" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round"/><path d="M15 31l-1-11 6 5 4-9 4 9 6-5-1 11z" fill="#fbbf24"/></svg>',
   oracle: '<svg viewBox="0 0 48 48"><path d="M24 2v5M24 41v5M2 24h5M41 24h5M8.5 8.5l3.5 3.5M39.5 8.5L36 12M8.5 39.5L12 36M39.5 39.5L36 36" stroke="#e0115f" stroke-width="2" stroke-linecap="round"/><polygon points="24,9 34,21 24,39 14,21" fill="#7a0a35" stroke="#e0115f" stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="22" r="4" fill="#ffd1e0"/></svg>',
 };
@@ -689,7 +688,7 @@ function badge(key, size = 40) {
 function rankCard(r) {
   const bar = h('div', { class: 'bar' }, h('div', {}));
   bar.firstChild.style.width = r.progress + '%';
-  return h('div', { class: 'card rank-card' },
+  return h('div', { class: 'card rank-card link', onclick: ranksTab },
     badge(r.key, 60),
     h('div', { class: 'rinfo' },
       h('div', { class: 'rname' }, r.name),
@@ -697,6 +696,65 @@ function rankCard(r) {
         ? [bar, h('div', { class: 'dim' }, `До «${r.next}»: ещё ${r.to_next} очков`)]
         : h('div', { class: 'dim' }, 'Высшее звание')));
 }
+
+const ranksTab = safe(async () => {
+  setTab('ranks');
+  const d = await api('/ranks');
+  const pts = d.points;
+  let cur = 0;
+  d.ranks.forEach((r, i) => { if (pts >= r.need) cur = i; });
+
+  const track = h('div', { class: 'rtrack' });
+  const dots = d.ranks.map((_, i) => h('button', { class: 'dot', 'aria-label': 'Звание ' + (i + 1), onclick: () => goTo(i) }));
+
+  d.ranks.forEach((r, i) => {
+    const reached = pts >= r.need;
+    let chipText, chipCls;
+    if (reached && i === cur) { chipText = 'Твоё звание'; chipCls = 'ok'; }
+    else if (reached) { chipText = 'Получено'; chipCls = ''; }
+    else if (i === cur + 1) { chipText = 'Следующее звание'; chipCls = 'wait'; }
+    else { chipText = 'Пока закрыто'; chipCls = ''; }
+
+    const body = [
+      badge(r.key, 120),
+      h('div', { class: 'rname' }, r.name),
+      h('div', { class: 'dim' }, r.need === 0 ? 'С первых очков' : `От ${r.need} очков`),
+      h('span', { class: 'chip ' + chipCls }, chipText),
+    ];
+    if (!reached) {
+      body.push(h('div', { class: 'dim' }, `Ещё ${r.need - pts} очков`));
+      if (i === cur + 1) {                       // полоса прогресса только до ближайшего звания
+        const from = d.ranks[cur].need;
+        const bar = h('div', { class: 'bar' }, h('div', {}));
+        bar.firstChild.style.width = Math.max(0, Math.min(100, Math.round((pts - from) / (r.need - from) * 100))) + '%';
+        body.splice(4, 0, bar);
+      }
+    } else if (i === d.ranks.length - 1) {
+      body.push(h('div', { class: 'dim' }, 'Высшее звание'));
+    }
+    track.append(h('div', { class: 'rslide' + (reached ? '' : ' locked') }, h('div', { class: 'card' }, body)));
+  });
+
+  const index = () => Math.round(track.scrollLeft / track.clientWidth);
+  function paintDots() { const k = index(); dots.forEach((dot, i) => dot.classList.toggle('on', i === k)); }
+  function goTo(i) {
+    const k = Math.max(0, Math.min(d.ranks.length - 1, i));
+    track.scrollTo({ left: k * track.clientWidth, behavior: 'smooth' });
+  }
+  track.addEventListener('scroll', paintDots);
+
+  show(
+    h('h1', {}, 'Звания'),
+    h('p', { class: 'dim' }, `Твои очки: ${pts}. Листай, чтобы увидеть все звания. Звание не падает: очки не отнимаются.`),
+    track,
+    h('div', { class: 'rnav' },
+      h('button', { class: 'arrow', onclick: () => goTo(index() - 1) }, '‹'),
+      h('div', { class: 'dots' }, dots),
+      h('button', { class: 'arrow', onclick: () => goTo(index() + 1) }, '›'))
+  );
+  track.scrollLeft = cur * track.clientWidth;   // сразу открываем текущее звание
+  paintDots();
+});
 
 /* ---------- профиль ---------- */
 
@@ -783,7 +841,7 @@ function about() {
 
 function go(tab) {
   if (!me || !me.registered) return onboarding();
-    ({ home, rating, history: historyTab, profile, favs })[tab]();
+    ({ home, rating, history: historyTab, profile, favs, ranks: ranksTab })[tab]();
 }
 
 document.querySelectorAll('#nav button, #profileBtn').forEach(b =>
