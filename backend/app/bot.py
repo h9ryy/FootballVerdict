@@ -96,7 +96,9 @@ def top_text() -> str:
     try:
         rows = (db.query(User)
                 .filter(User.nickname.isnot(None), User.total >= TOP_MIN_GAMES)
-                .order_by(User.points.desc()).limit(10).all())
+                .all())
+        rows.sort(key=lambda r: (-r.points, -(r.correct / r.total if r.total else 0), r.id))
+        rows = rows[:10]
         if not rows:
             return f"Пока в рейтинге никого. Нужно сделать хотя бы {TOP_MIN_GAMES} прогноза с итогом."
         medals = ["🥇", "🥈", "🥉"]
