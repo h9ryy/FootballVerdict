@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from .config import DATABASE_URL
 
@@ -18,3 +18,12 @@ def get_db():
         yield db
     finally:
         db.close()
+        
+def ensure_columns():
+    """Лёгкая миграция: добавляет новые колонки в уже созданную таблицу users."""
+    cols = {c["name"] for c in inspect(engine).get_columns("users")}
+    with engine.begin() as conn:
+        if "notify_enabled" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN notify_enabled BOOLEAN NOT NULL DEFAULT FALSE"))
+        if "notify_last_day" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN notify_last_day VARCHAR(10)"))

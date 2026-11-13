@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from .db import Base, engine, get_db
+from .db import Base, engine, get_db, ensure_columns
 from .models import User, Match, Prediction, Series, SeriesMatch, Favorite
 from .sync import sync_loop
 from .bot import run_bot
@@ -25,6 +25,7 @@ BANNED_PARTS: list[str] = []  # сюда добавим запрещённые �
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)                       # создать таблицы, если их нет
+    ensure_columns()                                       # добавить новые колонки в старую базу
     sync_task = asyncio.create_task(sync_loop())           # загрузка матчей в фоне
     bot_task = asyncio.create_task(run_bot())              # бот в фоне
     retention_task = asyncio.create_task(retention_loop()) # удаление давно неактивных профилей
@@ -64,7 +65,8 @@ def me_dict(u: User) -> dict:
     wr = round(u.correct / u.total * 100) if u.total else 0
     return {"nickname": u.nickname, "adult": bool(u.adult_confirmed_at), "points": u.points,
             "total": u.total, "correct": u.correct, "winrate": wr,
-            "streak": u.streak, "best_streak": u.best_streak, "rank": rank_info(u.points)}
+            "streak": u.streak, "best_streak": u.best_streak, "rank": rank_info(u.points),
+            "notify": bool(u.notify_enabled)}
 
 
 @app.get("/api/config")
@@ -452,6 +454,17 @@ def favorite_matches(db: Session = Depends(get_db), u: User = Depends(current_us
 def ranks_list(u: User = Depends(current_user)):
     return {"points": u.points,
             "ranks": [{"key": k, "name": n, "need": need} for need, k, n in RANKS]}
+
+class NotifyIn(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/me/notify")
+def set_notify(body: NotifyIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Согласие на напоминания в боте: включает и выключает сам игрок."""
+    u.notify_enabled = body.enabled
+    db.commit()
+    return {"ok": True, "notify": bool(u.notify_enabled)}
 
 # фронтенд отдаётся этим же сервером (должен быть В КОНЦЕ файла)
 FRONT = Path(__file__).resolve().parents[2] / "frontend"

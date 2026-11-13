@@ -25,6 +25,8 @@ class User(Base):
     correct: Mapped[int] = mapped_column(Integer, default=0)    # угадано
     streak: Mapped[int] = mapped_column(Integer, default=0)     # стрик: верные подряд
     best_streak: Mapped[int] = mapped_column(Integer, default=0)
+    notify_enabled: Mapped[bool] = mapped_column(default=False)            # согласие на напоминания в боте
+    notify_last_day: Mapped[str | None] = mapped_column(String(10), nullable=True)  # день последней рассылки (МСК)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     
 

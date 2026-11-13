@@ -812,6 +812,16 @@ const profile = safe(async () => {
   setTab('profile');
   me = await api('/me');
   paintTop();
+
+  const notify = h('input', { type: 'checkbox' });
+  notify.checked = !!me.notify;
+  notify.addEventListener('change', async () => {
+    try {
+      const r = await api('/me/notify', { method: 'POST', body: JSON.stringify({ enabled: notify.checked }) });
+      me.notify = r.notify;
+    } catch (e) { notify.checked = !notify.checked; alert(e.message); }
+  });
+
   show(
     h('h1', {}, me.nickname),
     rankCard(me.rank),
@@ -820,6 +830,10 @@ const profile = safe(async () => {
       h('div', { class: 'stat' }, String(me.points)),
       h('div', { class: 'dim' },
         `Винрейт ${me.winrate}% · угадано ${me.correct} из ${me.total} · стрик ${me.streak} (лучший ${me.best_streak})`)),
+    h('div', { class: 'card' },
+      h('label', { class: 'chk', style: 'margin:0 0 6px' }, notify, h('span', {}, 'Напоминать о матчах избранных команд')),
+      h('p', { class: 'dim', style: 'margin:0' },
+        'Не чаще раза в день в чате с ботом, только если сегодня играет твоя избранная команда и на матч нет прогноза. Выключено по умолчанию. Нужно, чтобы ты запускал бота (/start).')),
     h('p', { class: 'dim' }, 'Только прогнозы. Без денег и призов, очки виртуальные и не выводятся. 18+'),
     h('p', { class: 'dim' }, 'Football data provided by the Football-Data.org API'),
     h('button', { class: 'btn gap', onclick: about }, 'О проекте и правила (18+)'),
@@ -880,10 +894,11 @@ function about() {
       'Данные о матчах и результатах предоставлены Football-Data.org (football-data.org). Они могут приходить с задержкой или содержать неточности и носят информационный характер.',
       'Названия клубов и турниров принадлежат их правообладателям. Проект с ними не связан и ими не одобрен.'),
     block('Ваши данные',
-      'Мы храним только ваш ID в Telegram, придуманный ник, прогнозы, очки, статистику и список избранных команд. Имя, телефон, почту и фото мы не собираем.',
+      'Мы храним только ваш ID в Telegram, придуманный ник, прогнозы, очки, статистику, список избранных команд и ваш выбор насчёт напоминаний. Имя, телефон, почту и фото мы не собираем.',
       'Ваш ник, очки и процент угаданных прогнозов видны другим игрокам в рейтинге. Telegram-username не показывается.',
       'Удалить данные можно в любой момент: Профиль → «Удалить мои данные».',
-      'Если не заходить в приложение больше года, аккаунт удаляется автоматически.'),
+      'Если не заходить в приложение больше года, аккаунт удаляется автоматически.',
+      'Напоминания в боте приходят только тем, кто сам их включил (Профиль или команда /notify), не чаще раза в день, и отключаются в любой момент.'),
     block('Связь', 'Вопросы и обращения: ' + CONTACT)
   );
 }

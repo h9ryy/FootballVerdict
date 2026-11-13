@@ -2,6 +2,9 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
+import asyncio
+from .notify import notify_loop
+
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (BotCommand, CallbackQuery, InlineKeyboardButton,
@@ -33,7 +36,8 @@ ABOUT = (
     "• Мы не пропагандируем ставки на спорт и не рекламируем букмекеров.\n"
     "• Данные о матчах: Football-Data.org. Названия клубов и турниров принадлежат "
     "их владельцам, проект с ними не связан.\n"
-    "• Мы храним только ник, технический ID Telegram, прогнозы и очки. "
+    "• Мы храним только ник, технический ID Telegram, прогнозы, очки и список избранных команд. "
+    "Напоминания в боте приходят только тем, кто сам их включил, и отключаются в любой момент (/notify). "
     "Данные можно удалить в приложении: Профиль → «Удалить мои данные»."
 )
 
@@ -42,6 +46,7 @@ HELP = (
     "/profile: твои очки и винрейт\n"
     "/top: топ игроков\n"
     "/today: ближайшие матчи\n"
+    "/notify: напоминания о матчах избранных команд\n"
     "/about: правила и условия\n\n"
     "Сами прогнозы ставятся в приложении."
 )
@@ -148,6 +153,59 @@ def today_text(tg_id: int) -> str:
 async def cmd_start(m: Message):
     await m.answer(WELCOME, reply_markup=main_kb())
 
+def notify_state(tg_id: int):
+    """None: игрока нет в игре; иначе включены ли напоминания."""
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter_by(telegram_id=tg_id).first()
+        return None if (not u or not u.nickname) else bool(u.notify_enabled)
+    finally:
+        db.close()
+
+
+def toggle_notify(tg_id: int):
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter_by(telegram_id=tg_id).first()
+        if not u or not u.nickname:
+            return None
+        u.notify_enabled = not u.notify_enabled
+        db.commit()
+        return bool(u.notify_enabled)
+    finally:
+        db.close()
+
+
+def notify_text(on: bool) -> str:
+    if on:
+        return ("🔔 Напоминания включены.\n\nНе чаще раза в день (с 10:00 до 21:00 МСК) напишу, "
+                "если сегодня играет твоя избранная команда и на матч ещё нет прогноза.")
+    return ("🔕 Напоминания выключены.\n\nМожно включить: я буду писать не чаще раза в день, "
+            "только про матчи твоих избранных команд.")
+
+
+def notify_kb(on: bool):
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text="🔕 Выключить" if on else "🔔 Включить", callback_data="notify_toggle")]])
+
+
+@router.message(Command("notify"))
+async def cmd_notify(m: Message):
+    state = notify_state(m.from_user.id)
+    if state is None:
+        await m.answer("Сначала открой приложение и выбери ник.", reply_markup=open_kb())
+        return
+    await m.answer(notify_text(state), reply_markup=notify_kb(state))
+
+
+@router.callback_query(F.data == "notify_toggle")
+async def cb_notify(c: CallbackQuery):
+    new = toggle_notify(c.from_user.id)
+    if new is None:
+        await c.answer("Сначала открой приложение и выбери ник", show_alert=True)
+        return
+    await c.message.edit_text(notify_text(new), reply_markup=notify_kb(new))
+    await c.answer()
 
 @router.message(Command("help"))
 async def cmd_help(m: Message):
@@ -211,12 +269,14 @@ async def run_bot():
     bot = Bot(BOT_TOKEN)
     dp = Dispatcher()
     dp.include_router(router)
+    notify_task = None
     try:
         await bot.set_my_commands([
             BotCommand(command="start", description="Начать"),
             BotCommand(command="profile", description="Мои очки и винрейт"),
             BotCommand(command="top", description="Топ игроков"),
             BotCommand(command="today", description="Ближайшие матчи"),
+            BotCommand(command="notify", description="Напоминания о матчах"),
             BotCommand(command="about", description="О проекте и правила (18+)"),
             BotCommand(command="help", description="Помощь"),
         ])
@@ -225,8 +285,11 @@ async def run_bot():
                 text="Играть", web_app=WebAppInfo(url=WEBAPP_URL)))
         else:
             log.warning("WEBAPP_URL не задан: кнопки открытия приложения не будет")
+        notify_task = asyncio.create_task(notify_loop(bot, open_kb, short_name))
         await dp.start_polling(bot, handle_signals=False)
     except Exception:
         log.exception("Бот остановился с ошибкой")
     finally:
+        if notify_task:
+            notify_task.cancel()
         await bot.session.close()
