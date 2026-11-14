@@ -1,11 +1,11 @@
 import asyncio, re
-from .config import LEAGUES, APP_NAME, LEADERBOARD_MIN_GAMES, PERIOD_MIN_GAMES
+from .config import LEAGUES, APP_NAME, LEADERBOARD_MIN_GAMES, PERIOD_MIN_GAMES, CONSENT_VERSION
 from .auth import current_user, identity
 from .retention import delete_user_data, retention_loop
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import func, case
@@ -13,9 +13,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import Base, engine, get_db, ensure_columns
 from .models import User, Match, Prediction, Series, SeriesMatch, Favorite
+from .ranks import rank_info, RANKS
+from .ratelimit import rate_limit, strict_limit
 from .sync import sync_loop
 from .bot import run_bot
-from .ranks import rank_info, RANKS
 from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS,
                       series_bonuses)
 
@@ -35,7 +36,17 @@ async def lifespan(app: FastAPI):
     bot_task.cancel()
     retention_task.cancel()
 
-app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None)
+
+app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None,
+              openapi_url=None, dependencies=[Depends(rate_limit)])
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
 
 
 def aware(dt: datetime) -> datetime:
@@ -87,11 +98,12 @@ def me(tg_id: int = Depends(identity), db: Session = Depends(get_db)):
 class RegisterIn(BaseModel):
     nickname: str
     adult: bool
+    consent: bool = False
 
 
-@app.post("/api/register")
+@app.post("/api/register", dependencies=[Depends(strict_limit)])
 def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Depends(get_db)):
-    """Первый вход: подтверждение 18+ и ник. Запись о человеке создаётся только после этого."""
+    """Первый вход: подтверждение 18+, согласие и ник. Запись о человеке создаётся только после этого."""
     if not body.adult:
         raise HTTPException(400, "Сервис только для совершеннолетних (18+)")
     nick = body.nickname.strip()
@@ -105,7 +117,7 @@ def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Dep
         raise HTTPException(409, "Ник уже занят")
     now = datetime.now(timezone.utc)
     u = User(telegram_id=tg_id, nickname=nick, nickname_lower=nick.lower(),
-             adult_confirmed_at=now, last_seen_at=now)
+             adult_confirmed_at=now, consent_at=now, consent_version=CONSENT_VERSION, last_seen_at=now)
     db.add(u)
     try:
         db.commit()
@@ -115,11 +127,12 @@ def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Dep
     return {"registered": True, **me_dict(u)}
 
 
-@app.delete("/api/me")
+@app.delete("/api/me", dependencies=[Depends(strict_limit)])
 def delete_me(u: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Право на удаление: стираем аккаунт, прогнозы и серии."""
+    """Право на удаление: стираем аккаунт, прогнозы, серии и избранное."""
     delete_user_data(db, u)
     return {"ok": True}
+
 
 @app.get("/api/leagues")
 def leagues(db: Session = Depends(get_db), u: User = Depends(current_user)):
@@ -195,8 +208,17 @@ def predict(body: PickIn, u: User = Depends(current_user), db: Session = Depends
         p.pick, p.pred_home, p.pred_away = pick, home, away
     else:
         db.add(Prediction(user_id=u.id, match_id=m.id, pick=pick, pred_home=home, pred_away=away))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:        # два запроса подряд: прогноз уже создан, обновляем его
+        db.rollback()
+        p = db.query(Prediction).filter_by(user_id=u.id, match_id=m.id).first()
+        if not p:
+            raise HTTPException(409, "Повтори ещё раз")
+        p.pick, p.pred_home, p.pred_away = pick, home, away
+        db.commit()
     return {"ok": True, "pick": pick, "home": home, "away": away}
+
 
 @app.delete("/api/predictions/{match_id}")
 def cancel_prediction(match_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
@@ -234,7 +256,7 @@ def my_predictions(offset: int = 0, db: Session = Depends(get_db), u: User = Dep
     rows = (base.filter(Match.settled.is_(True)).order_by(Match.kickoff_at.desc())
             .offset(max(offset, 0)).limit(31).all())
     return {"pending": pending, "done": [item(p, m) for p, m in rows[:30]],
-        "has_more": len(rows) > 30, "exact_bonus": EXACT_BONUS}
+            "has_more": len(rows) > 30, "exact_bonus": EXACT_BONUS}
 
 
 def series_dict(s: Series, picks: dict) -> dict:
@@ -271,7 +293,7 @@ class SeriesIn(BaseModel):
     match_ids: list[int]
 
 
-@app.post("/api/series")
+@app.post("/api/series", dependencies=[Depends(strict_limit)])
 def create_series(body: SeriesIn, u: User = Depends(current_user), db: Session = Depends(get_db)):
     if not u.nickname:
         raise HTTPException(403, "Сначала выберите ник")
@@ -317,7 +339,7 @@ TOP_N = 20  # сколько строк показываем в рейтинге
 @app.get("/api/leaderboard")
 def leaderboard(period: str = "all", league: str = "",
                 db: Session = Depends(get_db), u: User = Depends(current_user)):
-    """Рейтинг: за неделю, месяц или всё время; можно по одной лиге."""
+    """Рейтинг за неделю, месяц или всё время, можно по лиге. Сортировка и топ считаются в базе."""
     if period not in ("week", "month", "all"):
         raise HTTPException(400, "Неверный период")
     if league and league not in LEAGUES:
@@ -326,13 +348,25 @@ def leaderboard(period: str = "all", league: str = "",
     def wr(correct: int, total: int) -> int:
         return round(correct / total * 100) if total else 0
 
+    since = (datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS[period])) if period in PERIOD_DAYS else None
+
     if period == "all" and not league:
-        # общий рейтинг: очки, итоги и серии дня уже посчитаны в профиле игрока
         min_games = LEADERBOARD_MIN_GAMES
-        entries = [(p, p.points, p.total, p.correct) for p in
-                   db.query(User).filter(User.nickname.isnot(None), User.total >= min_games).all()]
+        ratio = User.correct * 1.0 / User.total
+        base = db.query(User).filter(User.nickname.isnot(None), User.total >= min_games)
+        top = base.order_by(User.points.desc(), ratio.desc(), User.id).limit(TOP_N).all()
+        entries = [(p, p.points, p.total, p.correct) for p in top]
+        threshold = top[TOP_N - 1].points if len(top) >= TOP_N else None
+        mine = None
+        if u.nickname and u.total >= min_games:
+            my_ratio = u.correct / u.total
+            ahead = base.filter(
+                (User.points > u.points)
+                | ((User.points == u.points) & (ratio > my_ratio))
+                | ((User.points == u.points) & (ratio == my_ratio) & (User.id < u.id))).count()
+            mine = (ahead + 1, u.points, u.total, u.correct)
+        own = u.total
     else:
-        # за период или по лиге: считаем из прогнозов на сыгранные матчи (без бонуса серий)
         min_games = PERIOD_MIN_GAMES
         q = (db.query(Prediction.user_id,
                       func.coalesce(func.sum(Prediction.points_awarded), 0),
@@ -340,42 +374,33 @@ def leaderboard(period: str = "all", league: str = "",
                       func.sum(case((Prediction.pick == Match.result, 1), else_=0)))
              .join(Match, Match.id == Prediction.match_id)
              .filter(Match.settled.is_(True), Match.result.isnot(None)))
-        if period in PERIOD_DAYS:
-            q = q.filter(Match.kickoff_at >= datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS[period]))
+        if since:
+            q = q.filter(Match.kickoff_at >= since)
         if league:
             q = q.filter(Match.league == league)
         stats = {uid: (int(pts), int(n), int(ok or 0)) for uid, pts, n, ok in q.group_by(Prediction.user_id).all()}
-        since = (datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS[period])) if period in PERIOD_DAYS else None
         bonus = series_bonuses(db, since, league or None)
         stats = {uid: (pts + bonus.get(uid, 0), n, ok) for uid, (pts, n, ok) in stats.items()}
-        users = {p.id: p for p in db.query(User).filter(User.id.in_(list(stats)), User.nickname.isnot(None)).all()} if stats else {}
-        entries = [(users[uid], pts, n, ok) for uid, (pts, n, ok) in stats.items()
-                   if uid in users and n >= min_games]
+        qual = {uid: v for uid, v in stats.items() if v[1] >= min_games}
+        order = sorted(qual.items(), key=lambda kv: (-kv[1][0], -(kv[1][2] / kv[1][1]), kv[0]))
+        top_ids = [uid for uid, _ in order[:TOP_N]]
+        users = {p.id: p for p in db.query(User).filter(User.id.in_(top_ids)).all()} if top_ids else {}
+        entries = [(users[uid], v[0], v[1], v[2]) for uid, v in order[:TOP_N] if uid in users]
+        threshold = order[TOP_N - 1][1][0] if len(order) >= TOP_N else None
+        pos = next((i + 1 for i, (uid, _) in enumerate(order) if uid == u.id), None)
+        mine = (pos, *qual[u.id]) if pos else None
+        own = stats.get(u.id, (0, 0, 0))[1]
 
-    # при равных очках выше тот, у кого больше процент угаданных; затем по id
-    entries.sort(key=lambda e: (-e[1], -(e[3] / e[2] if e[2] else 0), e[0].id))
     rows = [{"place": i + 1, "nickname": p.nickname, "points": pts,
              "winrate": wr(ok, n), "me": p.id == u.id, "rank": rank_info(p.points)["key"]}
-            for i, (p, pts, n, ok) in enumerate(entries[:TOP_N])]
-    mine = next(((i + 1, pts, n, ok) for i, (p, pts, n, ok) in enumerate(entries) if p.id == u.id), None)
+            for i, (p, pts, n, ok) in enumerate(entries)]
     if mine:
         me = {"place": mine[0], "points": mine[1], "winrate": wr(mine[3], mine[2]), "total": mine[2]}
     else:
-        # игрока нет в списке: считаем, сколько прогнозов у него в этом режиме
-        if period == "all" and not league:
-            own = u.total
-        else:
-            qq = (db.query(func.count(Prediction.id)).join(Match, Match.id == Prediction.match_id)
-                  .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None)))
-            if period in PERIOD_DAYS:
-                qq = qq.filter(Match.kickoff_at >= datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS[period]))
-            if league:
-                qq = qq.filter(Match.league == league)
-            own = qq.scalar() or 0
         me = {"place": None, "points": 0, "winrate": 0, "total": own}
-        if mine and mine[0] > TOP_N and len(entries) >= TOP_N:
-            me["to_top"] = max(entries[TOP_N - 1][1] - mine[1], 0)   # сколько очков до последнего места в топе
-        me["rank"] = rank_info(u.points)["key"]
+    if mine and mine[0] > TOP_N and threshold is not None:
+        me["to_top"] = max(threshold - mine[1], 0)    # сколько очков до последнего места в топе
+    me["rank"] = rank_info(u.points)["key"]
     return {"min_games": min_games, "period": period, "league": league, "rows": rows, "me": me,
             "leagues": [{"code": c, "name": n} for c, n in LEAGUES.items()]}
 
@@ -457,11 +482,38 @@ def favorite_matches(db: Session = Depends(get_db), u: User = Depends(current_us
     in_series = series_match_ids(db, u.id)
     return {"teams": teams_, "exact_bonus": EXACT_BONUS,
             "matches": [match_dict(m, preds, in_series) for m in rows]}
-    
+
+
 @app.get("/api/ranks")
 def ranks_list(u: User = Depends(current_user)):
     return {"points": u.points,
             "ranks": [{"key": k, "name": n, "need": need} for need, k, n in RANKS]}
+
+
+@app.get("/api/me/stats")
+def my_stats(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Статистика для профиля: по лигам и точные счета (только сыгранные матчи)."""
+    base = (db.query(Match.league, func.count(Prediction.id),
+                     func.sum(case((Prediction.pick == Match.result, 1), else_=0)))
+            .join(Match, Match.id == Prediction.match_id)
+            .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None)))
+    leagues_ = [{"code": code, "name": LEAGUES.get(code, code), "total": int(n), "correct": int(ok or 0)}
+                for code, n, ok in base.group_by(Match.league).all()]
+    leagues_.sort(key=lambda x: -x["total"])
+    favorite = leagues_[0] if leagues_ else None
+    ranked = [x for x in leagues_ if x["total"] >= 5]
+    best = max(ranked, key=lambda x: x["correct"] / x["total"], default=None)
+    if best:
+        best = {**best, "winrate": round(best["correct"] / best["total"] * 100)}
+    exact = (db.query(func.count(Prediction.id))
+             .join(Match, Match.id == Prediction.match_id)
+             .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None),
+                     Prediction.pick == Match.result,
+                     Prediction.pred_home.isnot(None), Prediction.pred_away.isnot(None),
+                     Prediction.pred_home == Match.home_goals, Prediction.pred_away == Match.away_goals)
+             .scalar()) or 0
+    return {"favorite": favorite, "best": best, "exact": exact}
+
 
 class NotifyIn(BaseModel):
     enabled: bool
@@ -474,29 +526,6 @@ def set_notify(body: NotifyIn, u: User = Depends(current_user), db: Session = De
     db.commit()
     return {"ok": True, "notify": bool(u.notify_enabled)}
 
-@app.get("/api/me/stats")
-def my_stats(u: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Статистика для профиля: по лигам и точные счета (только сыгранные матчи)."""
-    base = (db.query(Match.league, func.count(Prediction.id),
-                     func.sum(case((Prediction.pick == Match.result, 1), else_=0)))
-            .join(Match, Match.id == Prediction.match_id)
-            .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None)))
-    leagues = [{"code": code, "name": LEAGUES.get(code, code), "total": int(n), "correct": int(ok or 0)}
-               for code, n, ok in base.group_by(Match.league).all()]
-    leagues.sort(key=lambda x: -x["total"])
-    favorite = leagues[0] if leagues else None
-    ranked = [x for x in leagues if x["total"] >= 5]
-    best = max(ranked, key=lambda x: x["correct"] / x["total"], default=None)
-    if best:
-        best = {**best, "winrate": round(best["correct"] / best["total"] * 100)}
-    exact = (db.query(func.count(Prediction.id))
-             .join(Match, Match.id == Prediction.match_id)
-             .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None),
-                     Prediction.pick == Match.result,
-                     Prediction.pred_home.isnot(None), Prediction.pred_away.isnot(None),
-                     Prediction.pred_home == Match.home_goals, Prediction.pred_away == Match.away_goals)
-             .scalar()) or 0
-    return {"favorite": favorite, "best": best, "exact": exact}
 
 # фронтенд отдаётся этим же сервером (должен быть В КОНЦЕ файла)
 FRONT = Path(__file__).resolve().parents[2] / "frontend"

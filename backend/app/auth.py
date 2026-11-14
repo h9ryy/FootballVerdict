@@ -38,7 +38,9 @@ def identity(
 ) -> int:
     """Кто делает запрос (id в Telegram). В базу ничего не пишет."""
     host = request.headers.get("host", "").split(":")[0]
-    local = host in ("127.0.0.1", "localhost") and "x-forwarded-for" not in request.headers
+    peer = request.client.host if request.client else ""
+    local = (host in ("127.0.0.1", "localhost") and "x-forwarded-for" not in request.headers
+             and peer in ("127.0.0.1", "::1"))     # заголовок Host подделывается, адрес соединения нет
     if DEV_MODE and local and x_dev_user.isdigit():
         return int(x_dev_user)  # только для локальной проверки в браузере
     info = validate_init_data(x_init_data, BOT_TOKEN)

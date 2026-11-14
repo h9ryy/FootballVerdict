@@ -104,10 +104,10 @@ def profile_text(tg_id: int) -> str:
 def top_text() -> str:
     db = SessionLocal()
     try:
+        ratio = User.correct * 1.0 / User.total
         rows = (db.query(User)
                 .filter(User.nickname.isnot(None), User.total >= TOP_MIN_GAMES)
-                .all())
-        rows.sort(key=lambda r: (-r.points, -(r.correct / r.total if r.total else 0), r.id))
+                .order_by(User.points.desc(), ratio.desc(), User.id).limit(10).all())
         rows = rows[:10]
         if not rows:
             return f"Пока в рейтинге никого. Нужно сделать хотя бы {TOP_MIN_GAMES} прогноза с итогом."
