@@ -310,6 +310,7 @@ def create_series(body: SeriesIn, u: User = Depends(current_user), db: Session =
 
 
 PERIOD_DAYS = {"week": 7, "month": 30}
+TOP_N = 20  # сколько строк показываем в рейтинге
 
 
 @app.get("/api/leaderboard")
@@ -351,7 +352,7 @@ def leaderboard(period: str = "all", league: str = "",
     entries.sort(key=lambda e: (-e[1], -(e[3] / e[2] if e[2] else 0), e[0].id))
     rows = [{"place": i + 1, "nickname": p.nickname, "points": pts,
              "winrate": wr(ok, n), "me": p.id == u.id, "rank": rank_info(p.points)["key"]}
-            for i, (p, pts, n, ok) in enumerate(entries[:50])]
+            for i, (p, pts, n, ok) in enumerate(entries[:TOP_N])]
     mine = next(((i + 1, pts, n, ok) for i, (p, pts, n, ok) in enumerate(entries) if p.id == u.id), None)
     if mine:
         me = {"place": mine[0], "points": mine[1], "winrate": wr(mine[3], mine[2]), "total": mine[2]}
@@ -368,6 +369,8 @@ def leaderboard(period: str = "all", league: str = "",
                 qq = qq.filter(Match.league == league)
             own = qq.scalar() or 0
         me = {"place": None, "points": 0, "winrate": 0, "total": own}
+        if mine and mine[0] > TOP_N and len(entries) >= TOP_N:
+            me["to_top"] = max(entries[TOP_N - 1][1] - mine[1], 0)   # сколько очков до последнего места в топе
         me["rank"] = rank_info(u.points)["key"]
     return {"min_games": min_games, "period": period, "league": league, "rows": rows, "me": me,
             "leagues": [{"code": c, "name": n} for c, n in LEAGUES.items()]}

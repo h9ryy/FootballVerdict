@@ -619,11 +619,15 @@ const rating = safe(async () => {
   const list = d.rows.map(r => h('div', { class: 'rank' },
     nameCell(`${r.place}. ${r.nickname}`, r.rank, r.me),
     h('span', {}, `${r.points} · ${r.winrate}%`)));
-  if (mine.place && !inTop) {
-    list.push(h('div', { class: 'rank' },
-      nameCell(`${mine.place}. ты`, mine.rank, true),
-      h('span', {}, `${mine.points} · ${mine.winrate}%`)));
-  }
+
+  // игрок ниже топа: его строка закреплена над меню, с подсказкой, сколько очков не хватает
+  const pin = (mine.place && !inTop)
+    ? h('div', { class: 'pin' },
+        h('div', { class: 'pl' },
+          nameCell(`${mine.place}. ты`, mine.rank, true),
+          mine.to_top ? h('div', { class: 'dim' }, `до №${d.rows.length}: ещё ${mine.to_top} очков`) : ''),
+        h('span', {}, `${mine.points} · ${mine.winrate}%`))
+    : '';
 
   const filtered = d.period !== 'all' || d.league;
   show(
@@ -633,7 +637,8 @@ const rating = safe(async () => {
     h('p', { class: 'dim' }, `В рейтинге игроки с ${d.min_games}+ прогнозами. При равных очках выше тот, у кого больше процент угаданных.`
       + (filtered ? ' Здесь считаются очки за прогнозы; бонус серии дня учитывается только в общем рейтинге за всё время.' : '')),
     mineCard,
-    list.length ? h('div', { class: 'card' }, list) : ''
+    list.length ? h('div', { class: 'card' }, list) : '',
+    pin
   );
 
   const active = lgs.querySelector('.on');

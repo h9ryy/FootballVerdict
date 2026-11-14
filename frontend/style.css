@@ -311,3 +311,14 @@ a { color: var(--neon); }
 
 /* рейтинг: ник и значок звания */
 .rn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+
+/* рейтинг: твоя строка закреплена над меню */
+.pin {
+  position: sticky; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); z-index: 4;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  margin-top: 10px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--neon); border-radius: 16px;
+  box-shadow: 0 0 14px var(--neon-soft);
+}
+.pin .pl { min-width: 0; }
+.pin .pl .dim { margin-top: 2px; font-size: 12px; }
