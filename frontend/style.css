@@ -296,3 +296,15 @@ a { color: var(--neon); }
   background: var(--surface); color: var(--text-dim); font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .lchip.on { border-color: var(--neon); color: var(--text); background: rgba(168, 85, 247, 0.18); }
+
+/* профиль */
+.phead { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; }
+.phead h1 { margin: 0; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.tile { margin: 0; padding: 12px 14px; }
+.tile .v { font-size: 22px; font-weight: 800; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .v.neon { color: var(--neon); text-shadow: 0 0 10px var(--neon-soft); }
+.rhist { display: flex; justify-content: space-between; margin: 10px 0 14px; }
+.rh { flex: 1; text-align: center; font-size: 10px; font-weight: 700; color: var(--text-dim); }
+.rh .badge { display: block; margin: 0 auto 4px; }
+.rh.locked .badge { filter: grayscale(1); opacity: 0.35; }

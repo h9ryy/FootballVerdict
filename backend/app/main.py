@@ -466,6 +466,30 @@ def set_notify(body: NotifyIn, u: User = Depends(current_user), db: Session = De
     db.commit()
     return {"ok": True, "notify": bool(u.notify_enabled)}
 
+@app.get("/api/me/stats")
+def my_stats(u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Статистика для профиля: по лигам и точные счета (только сыгранные матчи)."""
+    base = (db.query(Match.league, func.count(Prediction.id),
+                     func.sum(case((Prediction.pick == Match.result, 1), else_=0)))
+            .join(Match, Match.id == Prediction.match_id)
+            .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None)))
+    leagues = [{"code": code, "name": LEAGUES.get(code, code), "total": int(n), "correct": int(ok or 0)}
+               for code, n, ok in base.group_by(Match.league).all()]
+    leagues.sort(key=lambda x: -x["total"])
+    favorite = leagues[0] if leagues else None
+    ranked = [x for x in leagues if x["total"] >= 5]
+    best = max(ranked, key=lambda x: x["correct"] / x["total"], default=None)
+    if best:
+        best = {**best, "winrate": round(best["correct"] / best["total"] * 100)}
+    exact = (db.query(func.count(Prediction.id))
+             .join(Match, Match.id == Prediction.match_id)
+             .filter(Prediction.user_id == u.id, Match.settled.is_(True), Match.result.isnot(None),
+                     Prediction.pick == Match.result,
+                     Prediction.pred_home.isnot(None), Prediction.pred_away.isnot(None),
+                     Prediction.pred_home == Match.home_goals, Prediction.pred_away == Match.away_goals)
+             .scalar()) or 0
+    return {"favorite": favorite, "best": best, "exact": exact}
+
 # фронтенд отдаётся этим же сервером (должен быть В КОНЦЕ файла)
 FRONT = Path(__file__).resolve().parents[2] / "frontend"
 app.mount("/", StaticFiles(directory=FRONT, html=True), name="front")

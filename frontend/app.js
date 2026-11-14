@@ -810,26 +810,46 @@ const ranksTab = safe(async () => {
 
 const profile = safe(async () => {
   setTab('profile');
-  me = await api('/me');
+  const [mine, st, rk] = await Promise.all([api('/me'), api('/me/stats'), api('/ranks')]);
+  me = mine;
   paintTop();
+  const r = me.rank;
+
+  const tile = (label, value, sub, cls) => h('div', { class: 'card tile' },
+    h('div', { class: 'dim' }, label),
+    h('div', { class: 'v' + (cls ? ' ' + cls : '') }, value),
+    sub ? h('div', { class: 'dim' }, sub) : '');
+
+  const bar = h('div', { class: 'bar' }, h('div', {}));
+  bar.firstChild.style.width = r.progress + '%';
+  const rankBox = h('div', { class: 'card link', onclick: ranksTab },
+    h('div', { class: 'dim' }, 'Звания'),
+    h('div', { class: 'rhist' }, rk.ranks.map(x =>
+      h('div', { class: 'rh' + (me.points >= x.need ? '' : ' locked') }, badge(x.key, 34), h('div', {}, x.name)))),
+    bar,
+    h('div', { class: 'dim' }, r.next ? `До «${r.next}»: ещё ${r.to_next} очков` : 'Высшее звание'));
 
   const notify = h('input', { type: 'checkbox' });
   notify.checked = !!me.notify;
   notify.addEventListener('change', async () => {
     try {
-      const r = await api('/me/notify', { method: 'POST', body: JSON.stringify({ enabled: notify.checked }) });
-      me.notify = r.notify;
+      const x = await api('/me/notify', { method: 'POST', body: JSON.stringify({ enabled: notify.checked }) });
+      me.notify = x.notify;
     } catch (e) { notify.checked = !notify.checked; alert(e.message); }
   });
 
   show(
-    h('h1', {}, me.nickname),
-    rankCard(me.rank),
-    h('div', { class: 'card' },
-      h('div', { class: 'dim' }, 'Очки'),
-      h('div', { class: 'stat' }, String(me.points)),
-      h('div', { class: 'dim' },
-        `Винрейт ${me.winrate}% · угадано ${me.correct} из ${me.total} · стрик ${me.streak} (лучший ${me.best_streak})`)),
+    h('div', { class: 'phead' },
+      badge(r.key, 46),
+      h('div', {}, h('h1', {}, me.nickname), h('div', { class: 'dim' }, r.name))),
+    rankBox,
+    h('div', { class: 'tiles' },
+      tile('Очки', String(me.points), '', 'neon'),
+      tile('Винрейт', me.winrate + '%', `угадано ${me.correct} из ${me.total}`),
+      tile('Лучший стрик', String(me.best_streak), `сейчас ${me.streak}`),
+      tile('Точных счетов', String(st.exact), 'за 90 минут'),
+      tile('Любимая лига', st.favorite ? st.favorite.name : '—', st.favorite ? `${st.favorite.total} прогнозов` : 'пока нет итогов'),
+      tile('Лучшая лига', st.best ? st.best.name : '—', st.best ? `винрейт ${st.best.winrate}%` : 'нужно 5+ прогнозов в лиге')),
     h('div', { class: 'card' },
       h('label', { class: 'chk', style: 'margin:0 0 6px' }, notify, h('span', {}, 'Напоминать о матчах избранных команд')),
       h('p', { class: 'dim', style: 'margin:0' },
@@ -837,7 +857,15 @@ const profile = safe(async () => {
     h('p', { class: 'dim' }, 'Только прогнозы. Без денег и призов, очки виртуальные и не выводятся. 18+'),
     h('p', { class: 'dim' }, 'Football data provided by the Football-Data.org API'),
     h('button', { class: 'btn gap', onclick: about }, 'О проекте и правила (18+)'),
-    h('button', { class: 'btn danger', onclick: confirmDelete }, 'Удалить мои данные')
+    h('button', { class: 'btn danger', onclick: async () => {
+      if (!(await askConfirm('Удалить аккаунт и все прогнозы? Это необратимо.'))) return;
+      try {
+        await api('/me', { method: 'DELETE' });
+        me = { registered: false };
+        paintTop();
+        onboarding();
+      } catch (e) { alert(e.message); }
+    } }, 'Удалить мои данные')
   );
 });
 
