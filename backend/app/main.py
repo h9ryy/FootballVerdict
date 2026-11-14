@@ -350,7 +350,7 @@ def leaderboard(period: str = "all", league: str = "",
     # при равных очках выше тот, у кого больше процент угаданных; затем по id
     entries.sort(key=lambda e: (-e[1], -(e[3] / e[2] if e[2] else 0), e[0].id))
     rows = [{"place": i + 1, "nickname": p.nickname, "points": pts,
-             "winrate": wr(ok, n), "me": p.id == u.id}
+             "winrate": wr(ok, n), "me": p.id == u.id, "rank": rank_info(p.points)["key"]}
             for i, (p, pts, n, ok) in enumerate(entries[:50])]
     mine = next(((i + 1, pts, n, ok) for i, (p, pts, n, ok) in enumerate(entries) if p.id == u.id), None)
     if mine:
@@ -368,6 +368,7 @@ def leaderboard(period: str = "all", league: str = "",
                 qq = qq.filter(Match.league == league)
             own = qq.scalar() or 0
         me = {"place": None, "points": 0, "winrate": 0, "total": own}
+        me["rank"] = rank_info(u.points)["key"]
     return {"min_games": min_games, "period": period, "league": league, "rows": rows, "me": me,
             "leagues": [{"code": c, "name": n} for c, n in LEAGUES.items()]}
 

@@ -613,12 +613,15 @@ const rating = safe(async () => {
       h('div', { class: 'dim' }, `Чтобы попасть сюда, нужно ${d.min_games}+ прогнозов с итогом. Тебе осталось: ${left}.`));
   }
 
+  const nameCell = (text, key, isMe) => h('span',
+    { class: 'rn', style: isMe ? 'font-weight:800;color:var(--neon)' : null },
+    text, badge(key, 20));
   const list = d.rows.map(r => h('div', { class: 'rank' },
-    h('span', { style: r.me ? 'font-weight:800;color:var(--neon)' : null }, `${r.place}. ${r.nickname}`),
+    nameCell(`${r.place}. ${r.nickname}`, r.rank, r.me),
     h('span', {}, `${r.points} · ${r.winrate}%`)));
   if (mine.place && !inTop) {
     list.push(h('div', { class: 'rank' },
-      h('span', { style: 'font-weight:800;color:var(--neon)' }, `${mine.place}. ты`),
+      nameCell(`${mine.place}. ты`, mine.rank, true),
       h('span', {}, `${mine.points} · ${mine.winrate}%`)));
   }
 

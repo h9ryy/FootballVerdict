@@ -308,3 +308,6 @@ a { color: var(--neon); }
 .rh { flex: 1; text-align: center; font-size: 10px; font-weight: 700; color: var(--text-dim); }
 .rh .badge { display: block; margin: 0 auto 4px; }
 .rh.locked .badge { filter: grayscale(1); opacity: 0.35; }
+
+/* рейтинг: ник и значок звания */
+.rn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
