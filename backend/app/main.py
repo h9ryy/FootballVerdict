@@ -16,7 +16,8 @@ from .models import User, Match, Prediction, Series, SeriesMatch, Favorite
 from .sync import sync_loop
 from .bot import run_bot
 from .ranks import rank_info, RANKS
-from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS)
+from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS,
+                      series_bonuses)
 
 NICK_RE = re.compile(r"^[A-Za-zА-Яа-яЁё0-9_]{3,16}$")
 BANNED_PARTS: list[str] = []  # сюда добавим запрещённые слова для ников
@@ -344,6 +345,9 @@ def leaderboard(period: str = "all", league: str = "",
         if league:
             q = q.filter(Match.league == league)
         stats = {uid: (int(pts), int(n), int(ok or 0)) for uid, pts, n, ok in q.group_by(Prediction.user_id).all()}
+        since = (datetime.now(timezone.utc) - timedelta(days=PERIOD_DAYS[period])) if period in PERIOD_DAYS else None
+        bonus = series_bonuses(db, since, league or None)
+        stats = {uid: (pts + bonus.get(uid, 0), n, ok) for uid, (pts, n, ok) in stats.items()}
         users = {p.id: p for p in db.query(User).filter(User.id.in_(list(stats)), User.nickname.isnot(None)).all()} if stats else {}
         entries = [(users[uid], pts, n, ok) for uid, (pts, n, ok) in stats.items()
                    if uid in users and n >= min_games]

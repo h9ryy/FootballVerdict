@@ -101,3 +101,27 @@ def settle_series(db: Session) -> int:
             done += 1
     db.commit()
     return done
+
+def series_bonuses(db: Session, since: datetime | None = None, league: str | None = None) -> dict[int, int]:
+    """Бонусы выигранных серий по игрокам.
+    since: только серии, чей последний матч состоялся не раньше этого момента.
+    league: бонус делится пропорционально числу матчей этой лиги в серии (с округлением вниз)."""
+    q = db.query(Series).filter(Series.status == "won", Series.bonus_awarded > 0)
+    if since:
+        q = q.filter(Series.created_at >= since - timedelta(days=3))   # грубый отсев, точный ниже
+    out: dict[int, int] = {}
+    for s in q.all():
+        ms = [it.match for it in s.items]
+        if not ms:
+            continue
+        if since and max(_aware(m.kickoff_at) for m in ms) < since:
+            continue
+        if league:
+            k = sum(1 for m in ms if m.league == league)
+            if not k:
+                continue
+            bonus = s.bonus_awarded * k // len(ms)
+        else:
+            bonus = s.bonus_awarded
+        out[s.user_id] = out.get(s.user_id, 0) + bonus
+    return out
