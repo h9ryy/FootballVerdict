@@ -17,6 +17,7 @@ from .ranks import rank_info, RANKS
 from .ratelimit import rate_limit, strict_limit
 from .sync import sync_loop
 from .bot import run_bot
+from .backup import backup_loop
 from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS,
                       series_bonuses)
 
@@ -31,10 +32,12 @@ async def lifespan(app: FastAPI):
     sync_task = asyncio.create_task(sync_loop())           # загрузка матчей в фоне
     bot_task = asyncio.create_task(run_bot())              # бот в фоне
     retention_task = asyncio.create_task(retention_loop()) # удаление давно неактивных профилей
+    backup_task = asyncio.create_task(backup_loop())       # ежедневная копия базы
     yield
     sync_task.cancel()
     bot_task.cancel()
     retention_task.cancel()
+    backup_task.cancel()
 
 
 app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None,

@@ -20,3 +20,4 @@ venv/
 .DS_Store
 node_modules/seed_demo.py
 seed_demo.py
+backups/

@@ -10,7 +10,8 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import (BotCommand, CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, MenuButtonWebApp, Message, WebAppInfo)
 
-from .config import APP_NAME, BOT_TOKEN, WEBAPP_URL
+from .config import APP_NAME, BOT_TOKEN, WEBAPP_URL, BACKUP_CHAT_ID
+from .backup import run_backup
 from .db import SessionLocal
 from .models import Match, Prediction, User
 
@@ -153,6 +154,20 @@ def today_text(tg_id: int) -> str:
     finally:
         db.close()
 
+@router.message(Command("myid"))
+async def cmd_myid(m: Message):
+    await m.answer(f"Твой Telegram ID: {m.from_user.id}")
+
+
+@router.message(Command("backup"))
+async def cmd_backup(m: Message):
+    if not BACKUP_CHAT_ID or m.from_user.id != BACKUP_CHAT_ID:
+        return   # команда только для владельца, остальным бот не отвечает
+    out, sent = await run_backup()
+    if not out:
+        await m.answer("Файл базы не найден (или база не SQLite).")
+    elif not sent:
+        await m.answer(f"Копия создана ({out.name}), но отправить в Telegram не удалось.")
 
 @router.message(CommandStart())
 async def cmd_start(m: Message):
