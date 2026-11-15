@@ -27,5 +27,5 @@ LEAGUES = {
 INACTIVE_DELETE_DAYS = int(os.getenv("INACTIVE_DELETE_DAYS", "365"))  # через сколько дней без входа профиль удаляется
 RETENTION_CHECK_SECONDS = int(os.getenv("RETENTION_CHECK_SECONDS", str(24 * 3600)))  # как часто искать неактивных
 CONSENT_VERSION = "2026-11-14"  # версия текста согласия и политики: меняй вместе с privacy.html
-LEADERBOARD_MIN_GAMES = 20  # сколько прогнозов с итогом нужно для рейтинга (на время проверки 3, потом вернуть 20)
-PERIOD_MIN_GAMES = 3  # порог для рейтингов за неделю/месяц и по лиге
+LEADERBOARD_MIN_GAMES = 10  # сколько прогнозов с итогом нужно для рейтинга (на время проверки 3, потом вернуть 20)
+PERIOD_MIN_GAMES = 5  # порог для рейтингов за неделю/месяц и по лиге

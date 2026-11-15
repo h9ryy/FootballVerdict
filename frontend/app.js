@@ -10,7 +10,7 @@ if (tg) {
 const DEV_ID = new URLSearchParams(location.search).get('dev');
 const view = document.getElementById('view');
 let me = null;
-const CONTACT = '@hehevgsh5'; // ЗАМЕНИ на свой Telegram-ник или почту
+const CONTACT = '@hehevgsh5'; // контакт для вопросов и обращений (виден в «О проекте»)
 
 const PICK = { H: 'П1', D: 'Ничья', A: 'П2' };
 
