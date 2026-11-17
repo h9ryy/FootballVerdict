@@ -12,6 +12,10 @@ const view = document.getElementById('view');
 let me = null;
 const CONTACT = '@hehevgsh5'; // контакт для вопросов и обращений (виден в «О проекте»)
 
+// ссылка-приглашение открывает приложение с параметром ref_КОД
+const START_PARAM = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
+const REF = START_PARAM.startsWith('ref_') ? START_PARAM.slice(4) : '';
+
 const PICK = { H: 'П1', D: 'Ничья', A: 'П2' };
 
 // В Telegram встроенные alert и confirm работают не везде: используем окна самого Telegram
@@ -27,6 +31,7 @@ function askConfirm(text) {
     else resolve(window.confirm(text));
   });
 }
+
 const SERIES_STATUS = {
   open: ['В игре', 'wait'],
   won: ['Выиграна', 'ok'],
@@ -63,6 +68,7 @@ async function api(path, opts = {}) {
 function setTab(t) {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   document.getElementById('profileBtn').classList.toggle('on', t === 'profile');
+  document.getElementById('bellBtn').classList.toggle('on', t === 'bell');
 }
 
 // верхняя панель: очки слева, аватар (первая буква ника) справа
@@ -70,7 +76,13 @@ const AVATAR_ICON = document.getElementById('profileBtn').innerHTML;
 function paintTop() {
   const btn = document.getElementById('profileBtn');
   const pts = document.getElementById('pts');
-  if (me && me.registered) {
+  const bell = document.getElementById('bellBtn');
+  const registered = me && me.registered;
+  const n = (registered && me.requests) || 0;
+  bell.style.display = registered ? '' : 'none';
+  bell.classList.toggle('has', n > 0);
+  bell.querySelector('.bellcount').textContent = n > 9 ? '9+' : String(n);
+  if (registered) {
     btn.textContent = me.nickname.charAt(0).toUpperCase();
     pts.replaceChildren(h('small', {}, 'Очки'), String(me.points));
   } else {
@@ -152,7 +164,7 @@ function onboarding() {
     try {
       me = await api('/register', {
         method: 'POST',
-        body: JSON.stringify({ nickname: input.value, adult: adult.checked }),
+        body: JSON.stringify({ nickname: input.value, adult: adult.checked, consent: true, ref: REF }),
       });
       paintTop();
       home();
@@ -580,15 +592,22 @@ function dragScroll(el) {
   }, { passive: false });
 }
 
-const ratingState = { period: 'all', league: '' };
 const PERIODS = [['week', 'Неделя'], ['month', 'Месяц'], ['all', 'Всё время']];
+const ratingState = { period: 'all', league: '', scope: 'all' };
 
 const rating = safe(async () => {
   setTab('rating');
-  const qs = `?period=${ratingState.period}` + (ratingState.league ? `&league=${ratingState.league}` : '');
+  let qs = `?period=${ratingState.period}&scope=${ratingState.scope}`;
+  if (ratingState.league) qs += `&league=${ratingState.league}`;
   const d = await api('/leaderboard' + qs);
   const mine = d.me;
   const inTop = d.rows.some(r => r.me);
+  const friendsMode = d.scope === 'friends';
+
+  const scopeSeg = h('div', { class: 'seg two' }, [['all', 'Все игроки'], ['friends', 'Друзья']].map(([k, name]) =>
+    h('button', { class: 'segb' + (ratingState.scope === k ? ' on' : ''), onclick: () => {
+      ratingState.scope = k; rating();
+    } }, name)));
 
   const seg = h('div', { class: 'seg' }, PERIODS.map(([k, name]) =>
     h('button', { class: 'segb' + (ratingState.period === k ? ' on' : ''), onclick: () => {
@@ -602,9 +621,13 @@ const rating = safe(async () => {
   dragScroll(lgs);
 
   let mineCard;
-  if (mine.place) {
+  if (friendsMode && d.friends_count === 0) {
     mineCard = h('div', { class: 'card' },
-      h('div', { class: 'dim' }, 'Твоё место'),
+      h('div', { class: 'dim' }, 'Здесь пока только ты. Добавь друзей: за каждого по ссылке +50 очков.'),
+      h('button', { class: 'btn', style: 'margin-top:10px', onclick: friendsScreen }, 'Добавить друзей'));
+  } else if (mine.place) {
+    mineCard = h('div', { class: 'card' },
+      h('div', { class: 'dim' }, friendsMode ? 'Твоё место среди друзей' : 'Твоё место'),
       h('div', { class: 'stat' }, `#${mine.place}`),
       h('div', { class: 'dim' }, `${mine.points} очков · ${mine.winrate}%`));
   } else {
@@ -620,8 +643,7 @@ const rating = safe(async () => {
     nameCell(`${r.place}. ${r.nickname}`, r.rank, r.me),
     h('span', {}, `${r.points} · ${r.winrate}%`)));
 
-  // игрок ниже топа: его строка закреплена над меню, с подсказкой, сколько очков не хватает
-  const pin = (mine.place && !inTop)
+  const pin = (!friendsMode && mine.place && !inTop)
     ? h('div', { class: 'pin' },
         h('div', { class: 'pl' },
           nameCell(`${mine.place}. ты`, mine.rank, true),
@@ -630,11 +652,15 @@ const rating = safe(async () => {
     : '';
 
   const filtered = d.period !== 'all' || d.league;
+  const note = friendsMode
+    ? 'В рейтинге друзей показаны все, даже без прогнозов.'
+    : `В рейтинге игроки с ${d.min_games}+ прогнозами. При равных очках выше тот, у кого больше процент угаданных.`;
   show(
     h('h1', {}, 'Рейтинг'),
+    scopeSeg,
     seg,
     lgs,
-    h('p', { class: 'dim' }, `В рейтинге игроки с ${d.min_games}+ прогнозами. При равных очках выше тот, у кого больше процент угаданных.`
+    h('p', { class: 'dim' }, note
       + (filtered ? ' В очки входит и бонус выигранных серий дня. Если в серии были матчи разных лиг, в рейтинг лиги идёт доля бонуса по числу её матчей.' : '')),
     mineCard,
     list.length ? h('div', { class: 'card' }, list) : '',
@@ -642,7 +668,7 @@ const rating = safe(async () => {
   );
 
   const active = lgs.querySelector('.on');
-  if (active) lgs.scrollLeft = active.offsetLeft - 12;   // выбранная лига остаётся на виду
+  if (active) lgs.scrollLeft = active.offsetLeft - 12;
 });
 
 /* ---------- история ---------- */
@@ -814,11 +840,84 @@ const ranksTab = safe(async () => {
   paintDots();
 });
 
+
+/* ---------- друзья и уведомления ---------- */
+
+const notices = safe(async () => {
+  setTab('bell');
+  const d = await api('/notifications');
+  me = { ...me, requests: d.requests.length };
+  paintTop();
+  const cards = d.requests.map(r => h('div', { class: 'card hrow' },
+    h('div', { class: 'hmain' },
+      h('div', { class: 'teams rn' }, r.nickname, badge(r.rank, 20)),
+      h('div', { class: 'dim' }, 'хочет добавить тебя в друзья')),
+    h('div', { class: 'acts' },
+      h('button', { class: 'mini', onclick: async () => {
+        try { await api(`/friends/requests/${r.id}/accept`, { method: 'POST' }); notices(); } catch (e) { alert(e.message); }
+      } }, 'Принять'),
+      h('button', { class: 'mini ghost', onclick: async () => {
+        try { await api(`/friends/requests/${r.id}`, { method: 'DELETE' }); notices(); } catch (e) { alert(e.message); }
+      } }, '×'))));
+  show(
+    h('h1', {}, 'Уведомления'),
+    cards.length ? cards : h('div', { class: 'card' }, h('span', { class: 'dim' }, 'Новых уведомлений нет.'))
+  );
+});
+
+function shareInvite(link) {
+  const text = 'Го играть в прогнозы на футбол: копим очки и растём в званиях ⚽';
+  const url = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text);
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(url); else window.open(url, '_blank');
+}
+
+const friendsScreen = safe(async () => {
+  setTab('profile');
+  const d = await api('/friends');
+  const input = h('input', { type: 'text', placeholder: 'Ник друга', maxlength: 16 });
+  const msg = h('div', { class: 'dim' });
+  const add = h('button', { class: 'mini', onclick: async () => {
+    try {
+      const r = await api('/friends/request', { method: 'POST', body: JSON.stringify({ nickname: input.value }) });
+      if (r.status === 'friends') { friendsScreen(); return; }
+      input.value = '';
+      msg.textContent = 'Заявка отправлена: друг подтвердит её в уведомлениях.';
+    } catch (e) { alert(e.message); }
+  } }, 'Добавить');
+
+  const rows = d.friends.map(f => h('div', { class: 'rank' },
+    h('span', { class: 'rn' }, f.nickname, badge(f.rank, 20)),
+    h('span', {}, h('span', { class: 'dim' }, f.points + ' · '),
+      h('button', { class: 'mini ghost', onclick: async () => {
+        if (!(await askConfirm(`Убрать ${f.nickname} из друзей?`))) return;
+        try { await api('/friends?nickname=' + encodeURIComponent(f.nickname), { method: 'DELETE' }); friendsScreen(); }
+        catch (e) { alert(e.message); }
+      } }, '×'))));
+
+  show(
+    h('button', { class: 'back', onclick: profile }, '← Профиль'),
+    h('h1', {}, 'Друзья'),
+    h('div', { class: 'card' },
+      h('b', {}, `Пригласи друга: +${d.bonus} очков`),
+      h('p', { class: 'dim' }, `Бонус начисляется, когда друг по твоей ссылке сыграет 3 прогноза с итогом. Не больше ${d.max_rewards} раз. Уже получено: ${d.rewarded}.`),
+      h('button', { class: 'btn gap', onclick: () => shareInvite(d.link) }, 'Отправить приглашение'),
+      h('button', { class: 'btn', onclick: async () => {
+        try { await navigator.clipboard.writeText(d.link); alert('Ссылка скопирована'); } catch (e) { alert(d.link); }
+      } }, 'Скопировать ссылку')),
+    h('div', { class: 'card' },
+      h('b', {}, 'Добавить по нику'),
+      input, h('div', { class: 'scorerow' }, add, msg)),
+    h('div', { class: 'day' }, `Мои друзья: ${d.friends.length} из ${d.limit}`),
+    rows.length ? h('div', { class: 'card' }, rows) : h('p', { class: 'dim center' }, 'Пока никого. Отправь приглашение или добавь по нику.')
+  );
+});
+
+
 /* ---------- профиль ---------- */
 
 const profile = safe(async () => {
   setTab('profile');
-  const [mine, st, rk] = await Promise.all([api('/me'), api('/me/stats'), api('/ranks')]);
+  const [mine, st, rk, fr] = await Promise.all([api('/me'), api('/me/stats'), api('/ranks'), api('/friends')]);
   me = mine;
   paintTop();
   const r = me.rank;
@@ -846,11 +945,16 @@ const profile = safe(async () => {
     } catch (e) { notify.checked = !notify.checked; alert(e.message); }
   });
 
+  const friendsBox = h('div', { class: 'card link', onclick: friendsScreen },
+    h('b', {}, `Друзья: ${fr.friends.length} из ${fr.limit}`),
+    h('div', { class: 'dim' }, `Пригласи друга по ссылке и получи +${fr.bonus} очков`));
+
   show(
     h('div', { class: 'phead' },
       badge(r.key, 46),
       h('div', {}, h('h1', {}, me.nickname), h('div', { class: 'dim' }, r.name))),
     rankBox,
+    friendsBox,
     h('div', { class: 'tiles' },
       tile('Очки', String(me.points), '', 'neon'),
       tile('Винрейт', me.winrate + '%', `угадано ${me.correct} из ${me.total}`),
@@ -934,6 +1038,7 @@ function about() {
       'Ваш ник, очки и процент угаданных прогнозов видны другим игрокам в рейтинге. Telegram-username не показывается.',
       'Удалить данные можно в любой момент: Профиль → «Удалить мои данные».',
       'Если не заходить в приложение больше года, аккаунт удаляется автоматически.',
+      'Приглашение друга: +50 очков, когда друг по твоей ссылке сыграет 3 прогноза с итогом (не больше 10 бонусов).',
       'Напоминания в боте приходят только тем, кто сам их включил (Профиль или команда /notify), не чаще раза в день, и отключаются в любой момент.'),
     block('Связь', 'Вопросы и обращения: ' + CONTACT)
   );
@@ -950,11 +1055,22 @@ function go(tab) {
 document.querySelectorAll('#nav button, #profileBtn').forEach(b =>
   b.addEventListener('click', () => go(b.dataset.tab)));
 
+document.getElementById('bellBtn').addEventListener('click', () => {
+  if (!me || !me.registered) return onboarding();
+  notices();
+});
+
 (async () => {
   try {
     const cfg = await api('/config');
     document.title = cfg.app_name;
     me = await api('/me');
+    if (me.registered && REF) {   // открыл чужую ссылку-приглашение
+      try {
+        const r = await api('/friends/by-link', { method: 'POST', body: JSON.stringify({ code: REF }) });
+        alert(`Вы теперь друзья: ${r.nickname}`);
+      } catch (e) { /* ссылка устарела, твоя собственная или список полон */ }
+    }
     paintTop();
     me.registered ? home() : onboarding();
   } catch (e) {
