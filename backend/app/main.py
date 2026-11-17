@@ -20,6 +20,7 @@ from .bot import run_bot
 from .backup import backup_loop
 from .scoring import (EXACT_BONUS, SERIES_BONUS, SERIES_MAX, SERIES_MIN, SERIES_WINDOW_HOURS,
                       series_bonuses)
+from .friends import router as friends_router, friends_board, request_count, apply_referral
 
 NICK_RE = re.compile(r"^[A-Za-zА-Яа-яЁё0-9_]{3,16}$")
 BANNED_PARTS: list[str] = []  # сюда добавим запрещённые слова для ников
@@ -50,6 +51,8 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
     return resp
+
+app.include_router(friends_router)
 
 
 def aware(dt: datetime) -> datetime:
@@ -95,13 +98,14 @@ def me(tg_id: int = Depends(identity), db: Session = Depends(get_db)):
     u = db.query(User).filter_by(telegram_id=tg_id).first()
     if not u:
         return {"registered": False}
-    return {"registered": True, **me_dict(u)}
+    return {"registered": True, **me_dict(u), "requests": request_count(db, u.id)}
 
 
 class RegisterIn(BaseModel):
     nickname: str
     adult: bool
     consent: bool = False
+    ref: str = ""
 
 
 @app.post("/api/register", dependencies=[Depends(strict_limit)])
@@ -127,6 +131,8 @@ def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Dep
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Ник уже занят")
+    if body.ref:
+        apply_referral(db, u, body.ref)
     return {"registered": True, **me_dict(u)}
 
 
@@ -340,13 +346,18 @@ TOP_N = 20  # сколько строк показываем в рейтинге
 
 
 @app.get("/api/leaderboard")
-def leaderboard(period: str = "all", league: str = "",
+def leaderboard(period: str = "all", league: str = "", scope: str = "all",
                 db: Session = Depends(get_db), u: User = Depends(current_user)):
     """Рейтинг за неделю, месяц или всё время, можно по лиге. Сортировка и топ считаются в базе."""
     if period not in ("week", "month", "all"):
         raise HTTPException(400, "Неверный период")
     if league and league not in LEAGUES:
         raise HTTPException(400, "Неверная лига")
+    
+    if scope not in ("all", "friends"):
+        raise HTTPException(400, "Неверный режим")
+    if scope == "friends":
+        return friends_board(period, league, db, u)
 
     def wr(correct: int, total: int) -> int:
         return round(correct / total * 100) if total else 0

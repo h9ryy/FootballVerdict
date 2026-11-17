@@ -22,8 +22,15 @@ def get_db():
 def ensure_columns():
     """Лёгкая миграция: добавляет новые колонки в уже созданную таблицу users."""
     cols = {c["name"] for c in inspect(engine).get_columns("users")}
+    add = {
+        "notify_enabled": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "notify_last_day": "VARCHAR(10)",
+        "ref_code": "VARCHAR(12)",
+        "invited_by": "INTEGER",
+        "invite_rewarded": "BOOLEAN NOT NULL DEFAULT FALSE",
+    }
     with engine.begin() as conn:
-        if "notify_enabled" not in cols:
-            conn.execute(text("ALTER TABLE users ADD COLUMN notify_enabled BOOLEAN NOT NULL DEFAULT FALSE"))
-        if "notify_last_day" not in cols:
-            conn.execute(text("ALTER TABLE users ADD COLUMN notify_last_day VARCHAR(10)"))
+        for name, ddl in add.items():
+            if name not in cols:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ref_code ON users (ref_code)"))

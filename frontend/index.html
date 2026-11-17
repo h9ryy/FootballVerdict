@@ -11,9 +11,15 @@
 <body>
   <header id="topbar">
     <div id="pts"></div>
-    <button id="profileBtn" data-tab="profile" aria-label="Профиль">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c.6-3.7 3.7-5.8 7.5-5.8s6.9 2.1 7.5 5.8"/></svg>
-    </button>
+    <div class="tools">
+      <button id="bellBtn" aria-label="Уведомления">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+        <span class="bellcount"></span>
+      </button>
+      <button id="profileBtn" data-tab="profile" aria-label="Профиль">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c.6-3.7 3.7-5.8 7.5-5.8s6.9 2.1 7.5 5.8"/></svg>
+      </button>
+    </div>
   </header>
 
   <main id="view"></main>

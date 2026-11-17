@@ -31,3 +31,4 @@ LEADERBOARD_MIN_GAMES = 10  # сколько прогнозов с итогом 
 PERIOD_MIN_GAMES = 5  # порог для рейтингов за неделю/месяц и по лиге
 BACKUP_CHAT_ID = int(os.getenv("BACKUP_CHAT_ID", "0") or 0)   # Telegram ID владельца: куда слать копии (0 = не слать)
 BACKUP_KEEP = int(os.getenv("BACKUP_KEEP", "7"))              # сколько копий хранить в папке backups
+BOT_USERNAME = os.getenv("BOT_USERNAME", "FootballVerdictBot")   # для ссылки-приглашения

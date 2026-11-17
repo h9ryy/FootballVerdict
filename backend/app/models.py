@@ -27,6 +27,9 @@ class User(Base):
     best_streak: Mapped[int] = mapped_column(Integer, default=0)
     notify_enabled: Mapped[bool] = mapped_column(default=False)            # согласие на напоминания в боте
     notify_last_day: Mapped[str | None] = mapped_column(String(10), nullable=True)  # день последней рассылки (МСК)
+    ref_code: Mapped[str | None] = mapped_column(String(12), unique=True, index=True, nullable=True)  # код для ссылки-приглашения
+    invited_by: Mapped[int | None] = mapped_column(Integer, nullable=True)   # кто пригласил
+    invite_rewarded: Mapped[bool] = mapped_column(default=False)             # бонус за этого игрока уже выдан
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     
 
@@ -95,3 +98,22 @@ class Favorite(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     team: Mapped[str] = mapped_column(String(64))
     __table_args__ = (UniqueConstraint("user_id", "team"),)
+    
+class Friend(Base):
+    """Дружба хранится в обе стороны: две строки на пару."""
+    __tablename__ = "friends"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    friend_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint("user_id", "friend_id"),)
+
+
+class FriendRequest(Base):
+    """Заявка в друзья по нику: ждёт подтверждения во вкладке уведомлений."""
+    __tablename__ = "friend_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    to_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint("from_id", "to_id"),)

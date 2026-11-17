@@ -1,6 +1,7 @@
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .models import Match, Prediction, Series, User
@@ -19,6 +20,11 @@ SERIES_BONUS = {3: 20, 4: 35, 5: 60}   # бонус, если угаданы в�
 SERIES_WINDOW_HOURS = 48               # в серию попадают матчи ближайших 48 часов
 SERIES_EXPIRE_DAYS = 7                 # если матч так и не сыгран, серия аннулируется
 
+# Приглашение друзей
+INVITE_BONUS = 50            # очки пригласившему
+INVITE_NEEDS_GAMES = 3       # столько прогнозов с итогом должен сыграть приглашённый
+INVITE_MAX_REWARDS = 10      # больше стольких бонусов одному игроку не даём
+
 
 def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
@@ -32,6 +38,16 @@ def rare_bonus(share: float, votes: int) -> int:
         if share < limit:
             return bonus
     return 0
+
+
+def reward_inviter(db: Session, u: User) -> None:
+    """Пригласивший получает бонус, когда друг сыграл нужное число прогнозов."""
+    rewarded = (db.query(func.count(User.id))
+                .filter(User.invited_by == u.invited_by, User.invite_rewarded.is_(True)).scalar() or 0)
+    u.invite_rewarded = True
+    inviter = db.get(User, u.invited_by)
+    if inviter and rewarded < INVITE_MAX_REWARDS:
+        inviter.points += INVITE_BONUS
 
 
 def settle_match(db: Session, match: Match) -> int:
@@ -63,6 +79,8 @@ def settle_match(db: Session, match: Match) -> int:
             pts = 0
         p.points_awarded = pts
         u.points += pts
+        if u.invited_by and not u.invite_rewarded and u.total >= INVITE_NEEDS_GAMES:
+            reward_inviter(db, u)
 
     match.settled = True
     db.commit()
