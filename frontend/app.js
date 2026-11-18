@@ -14,8 +14,7 @@ const CONTACT = '@hehevgsh5'; // контакт для вопросов и об�
 
 // ссылка-приглашение открывает приложение с параметром ref_КОД
 const START_PARAM = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
-const URL_REF = new URLSearchParams(location.search).get('ref') || '';
-const REF = START_PARAM.startsWith('ref_') ? START_PARAM.slice(4) : URL_REF;
+const REF = START_PARAM.startsWith('ref_') ? START_PARAM.slice(4) : '';
 
 const PICK = { H: 'П1', D: 'Ничья', A: 'П2' };
 
@@ -159,24 +158,26 @@ function timeStr(d) {
 function onboarding() {
   setTab('');
   const input = h('input', { type: 'text', placeholder: 'Ник (3–16 символов)', maxlength: 16 });
+  const adult = h('input', { type: 'checkbox' });
   const err = h('div', { class: 'err' });
-  const start = h('button', { class: 'btn', onclick: async () => {
+  const start = h('button', { class: 'btn', disabled: true, onclick: async () => {
     try {
       me = await api('/register', {
         method: 'POST',
-        body: JSON.stringify({ nickname: input.value, ref: REF }),
+        body: JSON.stringify({ nickname: input.value, adult: adult.checked, consent: true, ref: REF }),
       });
       paintTop();
       home();
     } catch (e) { err.textContent = e.message; }
   } }, 'Начать');
+  adult.addEventListener('change', () => { start.disabled = !adult.checked; });
 
   show(
     h('h1', {}, 'Добро пожаловать'),
     h('div', { class: 'card' },
       h('p', {}, 'Придумай ник. Его увидят другие игроки в рейтинге.'),
       input,
-      // h('label', { class: 'chk' }, adult, h('span', {}, 'Мне есть 18 лет.')),
+      h('label', { class: 'chk' }, adult, h('span', {}, 'Мне есть 18 лет.')),
       h('p', { class: 'dim' }, 'Здесь только прогнозы: без денег и призов, очки виртуальные.'),
       err,
       start

@@ -103,7 +103,7 @@ def me(tg_id: int = Depends(identity), db: Session = Depends(get_db)):
 
 class RegisterIn(BaseModel):
     nickname: str
-    adult: bool = False
+    adult: bool
     consent: bool = False
     ref: str = ""
 
@@ -111,8 +111,8 @@ class RegisterIn(BaseModel):
 @app.post("/api/register", dependencies=[Depends(strict_limit)])
 def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Depends(get_db)):
     """Первый вход: подтверждение 18+, согласие и ник. Запись о человеке создаётся только после этого."""
-    # if not body.adult:
-    #     raise HTTPException(400, "Сервис только для совершеннолетних (18+)")
+    if not body.adult:
+        raise HTTPException(400, "Сервис только для совершеннолетних (18+)")
     nick = body.nickname.strip()
     if not NICK_RE.match(nick):
         raise HTTPException(400, "Ник: 3–16 символов, буквы, цифры и _")
@@ -124,7 +124,7 @@ def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Dep
         raise HTTPException(409, "Ник уже занят")
     now = datetime.now(timezone.utc)
     u = User(telegram_id=tg_id, nickname=nick, nickname_lower=nick.lower(),
-             adult_confirmed_at=now if body.adult else None, consent_at=now, consent_version=CONSENT_VERSION, last_seen_at=now)
+             adult_confirmed_at=now, consent_at=now, consent_version=CONSENT_VERSION, last_seen_at=now)
     db.add(u)
     try:
         db.commit()
