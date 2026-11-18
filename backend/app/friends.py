@@ -82,7 +82,7 @@ def get_friends(db: Session = Depends(get_db), u: User = Depends(current_user)):
                 .filter(User.invited_by == u.id, User.invite_rewarded.is_(True)).scalar() or 0)
     return {"friends": [{"nickname": f.nickname, "rank": rank_info(f.points)["key"], "points": f.points}
                         for f in users],
-            "limit": MAX_FRIENDS, "link": f"https://t.me/{BOT_USERNAME}?startapp=ref_{code}",
+            "limit": MAX_FRIENDS, "link": f"https://t.me/{BOT_USERNAME}?start=ref_{code}",
             "bonus": INVITE_BONUS, "rewarded": rewarded, "max_rewards": INVITE_MAX_REWARDS}
 
 

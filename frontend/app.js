@@ -14,7 +14,8 @@ const CONTACT = '@hehevgsh5'; // контакт для вопросов и об�
 
 // ссылка-приглашение открывает приложение с параметром ref_КОД
 const START_PARAM = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
-const REF = START_PARAM.startsWith('ref_') ? START_PARAM.slice(4) : '';
+const URL_REF = new URLSearchParams(location.search).get('ref') || '';
+const REF = START_PARAM.startsWith('ref_') ? START_PARAM.slice(4) : URL_REF;
 
 const PICK = { H: 'П1', D: 'Ничья', A: 'П2' };
 

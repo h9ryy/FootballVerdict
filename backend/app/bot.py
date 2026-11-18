@@ -6,7 +6,7 @@ import asyncio
 from .notify import notify_loop
 
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (BotCommand, CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, MenuButtonWebApp, Message, WebAppInfo)
 
@@ -76,10 +76,11 @@ def open_kb():
     ]])
 
 
-def main_kb():
+def main_kb(ref: str | None = None):
     rows = []
     if WEBAPP_URL:
-        rows.append([InlineKeyboardButton(text="⚽ Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))])
+        url = f"{WEBAPP_URL}/?ref={ref}" if ref else WEBAPP_URL
+        rows.append([InlineKeyboardButton(text="⚽ Открыть приложение", web_app=WebAppInfo(url=url))])
     rows.append([InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
                  InlineKeyboardButton(text="🏆 Рейтинг", callback_data="top")])
     rows.append([InlineKeyboardButton(text="📅 Матчи", callback_data="today"),
@@ -170,8 +171,10 @@ async def cmd_backup(m: Message):
         await m.answer(f"Копия создана ({out.name}), но отправить в Telegram не удалось.")
 
 @router.message(CommandStart())
-async def cmd_start(m: Message):
-    await m.answer(WELCOME, reply_markup=main_kb())
+async def cmd_start(m: Message, command: CommandObject):
+    arg = (command.args or "").strip()
+    ref = arg[4:] if arg.startswith("ref_") and re.fullmatch(r"[A-Za-z0-9_-]{1,12}", arg[4:]) else None
+    await m.answer(WELCOME, reply_markup=main_kb(ref))
 
 def notify_state(tg_id: int):
     """None: игрока нет в игре; иначе включены ли напоминания."""
