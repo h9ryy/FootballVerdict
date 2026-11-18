@@ -908,7 +908,7 @@ const friendsScreen = safe(async () => {
       h('b', {}, 'Добавить по нику'),
       input, h('div', { class: 'scorerow' }, add, msg)),
     h('div', { class: 'day' }, `Мои друзья: ${d.friends.length} из ${d.limit}`),
-    rows.length ? h('div', { class: 'card' }, rows) : h('p', { class: 'dim center' }, 'Пока никого. Отправь приглашение или добавь по нику.')
+    rows.length ? h('div', { class: 'card friends-list' }, rows) : h('p', { class: 'dim center' }, 'Пока никого. Отправь приглашение или добавь по нику.')
   );
 });
 
