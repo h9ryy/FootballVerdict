@@ -159,26 +159,24 @@ function timeStr(d) {
 function onboarding() {
   setTab('');
   const input = h('input', { type: 'text', placeholder: 'Ник (3–16 символов)', maxlength: 16 });
-  const adult = h('input', { type: 'checkbox' });
   const err = h('div', { class: 'err' });
-  const start = h('button', { class: 'btn', disabled: true, onclick: async () => {
+  const start = h('button', { class: 'btn', onclick: async () => {
     try {
       me = await api('/register', {
         method: 'POST',
-        body: JSON.stringify({ nickname: input.value, adult: adult.checked, consent: true, ref: REF }),
+        body: JSON.stringify({ nickname: input.value, ref: REF }),
       });
       paintTop();
       home();
     } catch (e) { err.textContent = e.message; }
   } }, 'Начать');
-  adult.addEventListener('change', () => { start.disabled = !adult.checked; });
 
   show(
     h('h1', {}, 'Добро пожаловать'),
     h('div', { class: 'card' },
       h('p', {}, 'Придумай ник. Его увидят другие игроки в рейтинге.'),
       input,
-      h('label', { class: 'chk' }, adult, h('span', {}, 'Мне есть 18 лет.')),
+      // h('label', { class: 'chk' }, adult, h('span', {}, 'Мне есть 18 лет.')),
       h('p', { class: 'dim' }, 'Здесь только прогнозы: без денег и призов, очки виртуальные.'),
       err,
       start
