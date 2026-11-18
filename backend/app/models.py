@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, ForeignKey, DateTime, UniqueConstraint, Index
+from sqlalchemy import String, Integer, BigInteger, ForeignKey, DateTime, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
@@ -13,7 +13,7 @@ class User(Base):
     Имя, username и фото из Telegram НЕ сохраняем."""
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(unique=True, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     nickname: Mapped[str | None] = mapped_column(String(16), nullable=True)
     nickname_lower: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True)
     adult_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
