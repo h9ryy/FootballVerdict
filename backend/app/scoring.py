@@ -21,9 +21,9 @@ SERIES_WINDOW_HOURS = 48               # в серию попадают матч
 SERIES_EXPIRE_DAYS = 7                 # если матч так и не сыгран, серия аннулируется
 
 # Приглашение друзей
-INVITE_BONUS = 50            # очки пригласившему
+INVITE_BONUS = 30            # очки пригласившему
 INVITE_NEEDS_GAMES = 3       # столько прогнозов с итогом должен сыграть приглашённый
-INVITE_MAX_REWARDS = 10      # больше стольких бонусов одному игроку не даём
+INVITE_MAX_REWARDS = 30      # больше стольких бонусов одному игроку не даём
 
 
 def _aware(dt: datetime) -> datetime:
