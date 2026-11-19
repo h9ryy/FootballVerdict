@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 from sqlalchemy import func, case
 from sqlalchemy.exc import IntegrityError
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None,
               openapi_url=None, dependencies=[Depends(rate_limit)])
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 @app.middleware("http")
@@ -50,6 +52,8 @@ async def security_headers(request: Request, call_next):
     resp = await call_next(request)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
+    if request.url.path.startswith("/fonts/"):
+        resp.headers["Cache-Control"] = "public, max-age=2592000"   # шрифты: 30 дней
     return resp
 
 app.include_router(friends_router)
