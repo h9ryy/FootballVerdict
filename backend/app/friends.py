@@ -1,4 +1,5 @@
 import secrets
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,7 @@ from .ranks import rank_info
 from .ratelimit import strict_limit
 from .scoring import INVITE_BONUS, INVITE_MAX_REWARDS, series_bonuses
 
+log = logging.getLogger("friends")
 router = APIRouter()
 MAX_FRIENDS = 30
 PERIOD_DAYS = {"week": 7, "month": 30}
@@ -63,13 +65,18 @@ def apply_referral(db: Session, u: User, code: str) -> None:
     """Новый игрок пришёл по ссылке: запоминаем, кто пригласил, и дружим. Ошибки регистрацию не ломают."""
     try:
         inviter = db.query(User).filter_by(ref_code=code.strip()).first()
-        if not inviter or inviter.id == u.id:
+        if not inviter:
+            log.warning("Приглашение: код %r не найден", code)
+            return
+        if inviter.id == u.id:
             return
         u.invited_by = inviter.id
-        link_friends(db, u.id, inviter.id)
+        if not link_friends(db, u.id, inviter.id):
+            log.warning("Приглашение: список друзей полон (%s, %s)", u.id, inviter.id)
         db.commit()
     except Exception:
         db.rollback()
+        log.exception("Не удалось применить приглашение")
 
 
 @router.get("/api/friends")
