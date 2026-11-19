@@ -31,6 +31,7 @@ class User(Base):
     invited_by: Mapped[int | None] = mapped_column(Integer, nullable=True)   # кто пригласил
     invite_rewarded: Mapped[bool] = mapped_column(default=False)             # бонус за этого игрока уже выдан
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (Index("ix_users_points", "points"),)
     
 
 
@@ -50,6 +51,10 @@ class Match(Base):
     away_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
     settled: Mapped[bool] = mapped_column(default=False)
     predictions: Mapped[list["Prediction"]] = relationship(back_populates="match")
+    __table_args__ = (
+        Index("ix_matches_home_kickoff", "home", "kickoff_at"),
+        Index("ix_matches_away_kickoff", "away", "kickoff_at"),
+    )
 
 
 class Prediction(Base):

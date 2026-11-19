@@ -20,7 +20,7 @@ def get_db():
         db.close()
         
 def ensure_columns():
-    """Лёгкая миграция: добавляет новые колонки в уже созданную таблицу users."""
+    """Лёгкая миграция: добавляет новые колонки и индексы в уже созданные таблицы."""
     cols = {c["name"] for c in inspect(engine).get_columns("users")}
     add = {
         "notify_enabled": "BOOLEAN NOT NULL DEFAULT FALSE",
@@ -29,8 +29,15 @@ def ensure_columns():
         "invited_by": "INTEGER",
         "invite_rewarded": "BOOLEAN NOT NULL DEFAULT FALSE",
     }
+    indexes = [
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ref_code ON users (ref_code)",
+        "CREATE INDEX IF NOT EXISTS ix_users_points ON users (points)",
+        "CREATE INDEX IF NOT EXISTS ix_matches_home_kickoff ON matches (home, kickoff_at)",
+        "CREATE INDEX IF NOT EXISTS ix_matches_away_kickoff ON matches (away, kickoff_at)",
+    ]
     with engine.begin() as conn:
         for name, ddl in add.items():
             if name not in cols:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ref_code ON users (ref_code)"))
+        for stmt in indexes:
+            conn.execute(text(stmt))
