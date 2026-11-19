@@ -86,9 +86,12 @@ async def send_backup(path: Path, caption: str) -> bool:
 async def run_backup(send: bool = True):
     """Сделать копию сейчас. Возвращает (путь или None, отправлена ли в Telegram)."""
     src = db_file()
-    if not src or not src.exists():
-        return None, False
-    out = await asyncio.to_thread(make_backup, src, src.parent / "backups", BACKUP_KEEP)
+    if src is not None:
+        if not src.exists():
+            return None, False
+        out = await asyncio.to_thread(make_backup, src, src.parent / "backups", BACKUP_KEEP)
+    else:
+        out = await asyncio.to_thread(make_json_backup, backup_dir(), BACKUP_KEEP)
     sent = await send_backup(out, f"Копия базы: {out.name}") if send else False
     return out, sent
 
