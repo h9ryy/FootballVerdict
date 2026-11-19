@@ -1,5 +1,6 @@
 import asyncio
 import gzip
+import json
 import logging
 import shutil
 import sqlite3
@@ -7,9 +8,12 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.engine import make_url
 
+from . import models  # noqa: F401  (чтобы все таблицы были известны)
 from .config import BACKUP_CHAT_ID, BACKUP_KEEP, BOT_TOKEN, DATABASE_URL
+from .db import Base, engine
 
 log = logging.getLogger("backup")
 MSK = timezone(timedelta(hours=3))
@@ -36,6 +40,28 @@ def make_backup(src: Path, out_dir: Path, keep: int = 7, stamp: str | None = Non
         shutil.copyfileobj(f, g)
     tmp.unlink()
     for old in sorted(out_dir.glob("football-*.db.gz"))[:-keep]:
+        old.unlink()
+    return out
+
+
+def backup_dir() -> Path:
+    """Куда класть копии при Postgres: в постоянную папку /data, если она есть."""
+    data = Path("/data")
+    return (data if data.exists() else Path(".")) / "backups"
+
+
+def make_json_backup(out_dir: Path, keep: int = 7, stamp: str | None = None) -> Path:
+    """Копия всех таблиц в gzip-JSON (для Postgres). Лишние старые удаляются."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    out = out_dir / f"football-{stamp}.json.gz"
+    data: dict[str, list] = {}
+    with engine.connect() as conn:
+        for table in Base.metadata.sorted_tables:
+            data[table.name] = [dict(r) for r in conn.execute(select(table)).mappings().all()]
+    with gzip.open(out, "wt", encoding="utf-8") as g:
+        json.dump(data, g, default=str, ensure_ascii=False)
+    for old in sorted(out_dir.glob("football-*.json.gz"))[:-keep]:
         old.unlink()
     return out
 
@@ -76,9 +102,6 @@ def seconds_to_next(now: datetime | None = None) -> float:
 
 
 async def backup_loop():
-    if db_file() is None:
-        log.warning("Бэкапы выключены: база не SQLite")
-        return
     while True:
         await asyncio.sleep(seconds_to_next())
         try:
