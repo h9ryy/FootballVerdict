@@ -12,7 +12,7 @@ from sqlalchemy import func, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import Base, engine, get_db, ensure_columns
-from .models import User, Match, Prediction, Series, SeriesMatch, Favorite
+from .models import User, Match, Prediction, Series, SeriesMatch, Favorite, PendingRef
 from .ranks import rank_info, RANKS
 from .ratelimit import rate_limit, strict_limit
 from .sync import sync_loop
@@ -131,8 +131,13 @@ def register(body: RegisterIn, tg_id: int = Depends(identity), db: Session = Dep
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Ник уже занят")
-    if body.ref:
-        apply_referral(db, u, body.ref)
+    pending = db.query(PendingRef).filter_by(telegram_id=tg_id).first()
+    ref = body.ref or (pending.code if pending else "")
+    if ref:
+        apply_referral(db, u, ref)
+    if pending:
+        db.delete(pending)
+        db.commit()
     return {"registered": True, **me_dict(u)}
 
 

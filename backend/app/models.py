@@ -117,3 +117,12 @@ class FriendRequest(Base):
     to_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     __table_args__ = (UniqueConstraint("from_id", "to_id"),)
+    
+    
+class PendingRef(Base):
+    """Код приглашения, пришедший в бота до регистрации. Удаляется при регистрации или через 7 дней."""
+    __tablename__ = "pending_refs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    code: Mapped[str] = mapped_column(String(12))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

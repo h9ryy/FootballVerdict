@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .config import INACTIVE_DELETE_DAYS, RETENTION_CHECK_SECONDS
 from .db import SessionLocal
-from .models import Favorite, Friend, FriendRequest, Prediction, Series, SeriesMatch, User
+from .models import Favorite, Friend, FriendRequest, PendingRef, Prediction, Series, SeriesMatch, User
 
 log = logging.getLogger("retention")
 
@@ -37,6 +37,14 @@ def purge_inactive(db: Session, days: int = INACTIVE_DELETE_DAYS) -> int:
     return len(old)
 
 
+def purge_pending_refs(db: Session, days: int = 7) -> int:
+    """Удалить неиспользованные приглашения старше недели."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    n = db.query(PendingRef).filter(PendingRef.created_at < cutoff).delete()
+    db.commit()
+    return n
+
+
 async def retention_loop(every_seconds: int = RETENTION_CHECK_SECONDS):
     """Раз в сутки удаляет давно неактивные профили (первый раз сразу при запуске)."""
     while True:
@@ -44,6 +52,7 @@ async def retention_loop(every_seconds: int = RETENTION_CHECK_SECONDS):
             db = SessionLocal()
             try:
                 n = purge_inactive(db)
+                purge_pending_refs(db)
             finally:
                 db.close()
             print(f"[очистка] проверка неактивных профилей: удалено {n}", flush=True)

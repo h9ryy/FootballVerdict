@@ -13,7 +13,7 @@ from aiogram.types import (BotCommand, CallbackQuery, InlineKeyboardButton,
 from .config import APP_NAME, BOT_TOKEN, WEBAPP_URL, BACKUP_CHAT_ID
 from .backup import run_backup
 from .db import SessionLocal
-from .models import Match, Prediction, User
+from .models import Match, PendingRef, Prediction, User
 
 log = logging.getLogger("bot")
 router = Router()
@@ -170,10 +170,33 @@ async def cmd_backup(m: Message):
     elif not sent:
         await m.answer(f"Копия создана ({out.name}), но отправить в Telegram не удалось.")
 
+
+def save_pending_ref(tg_id: int, code: str) -> None:
+    """Запомнить приглашение для ещё не зарегистрированного человека."""
+    db = SessionLocal()
+    try:
+        if db.query(User.id).filter_by(telegram_id=tg_id).first():
+            return
+        row = db.query(PendingRef).filter_by(telegram_id=tg_id).first()
+        if row:
+            row.code = code
+            row.created_at = datetime.now(timezone.utc)
+        else:
+            db.add(PendingRef(telegram_id=tg_id, code=code))
+        db.commit()
+    except Exception:
+        db.rollback()
+        log.exception("Не удалось сохранить приглашение")
+    finally:
+        db.close()
+
+
 @router.message(CommandStart())
 async def cmd_start(m: Message, command: CommandObject):
     arg = (command.args or "").strip()
     ref = arg[4:] if arg.startswith("ref_") and re.fullmatch(r"[A-Za-z0-9_-]{1,12}", arg[4:]) else None
+    if ref:
+        save_pending_ref(m.from_user.id, ref)
     await m.answer(WELCOME, reply_markup=main_kb(ref))
 
 def notify_state(tg_id: int):
